@@ -266,3 +266,116 @@ export const PolicyReasonCode = z.enum([
   "POLICY_UNAVAILABLE",
 ]);
 export type PolicyReasonCode = z.infer<typeof PolicyReasonCode>;
+
+// ---------------------------------------------------------------------------
+// Raw (untrusted) action proposal (TOOL_CONTRACTS.md, TECHNICAL_SPEC.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * Why this schema exists separately from `ActionProposal`: `ActionProposal`
+ * is the server-assembled, trusted record (has an `id`, an `intentId`, a
+ * server-computed `canonicalHash`). `RawActionProposal` is what a model
+ * adapter is allowed to hand back — untyped intent, not authority — and it
+ * is `.strict()` at every level so an extra key (parameter smuggling,
+ * ACTION_MODEL.md / w3-004) is a parse failure, not a silently-ignored
+ * field. There is no `update_ticket_status` branch: TOOL_CONTRACTS.md
+ * specifies a parameter shape for exactly three of the four allowlisted
+ * action types. Rather than invent an unspecified contract, a proposal
+ * claiming `update_ticket_status` simply fails to match this union — the
+ * same "not yet implemented" outcome a genuinely unknown action type gets.
+ */
+export const CreateInternalTicketParameters = z
+  .object({
+    title: z.string().min(1).max(120),
+    description: z.string().max(2000).optional(),
+    priority: z.enum(["low", "medium", "high"]).optional(),
+  })
+  .strict();
+export type CreateInternalTicketParameters = z.infer<typeof CreateInternalTicketParameters>;
+
+export const SendCustomerMessageParameters = z
+  .object({
+    customerId: z.string().min(1),
+    body: z.string().min(1).max(2000),
+    channel: z.enum(["email", "sms"]),
+  })
+  .strict();
+export type SendCustomerMessageParameters = z.infer<typeof SendCustomerMessageParameters>;
+
+export const IssueRefundParameters = z
+  .object({
+    orderId: z.string().min(1),
+    amountMinorInteger: z.number().int().positive(),
+    currency: z.string().length(3),
+    reason: z.string().min(1).max(300),
+  })
+  .strict();
+export type IssueRefundParameters = z.infer<typeof IssueRefundParameters>;
+
+const rawActionEnvelopeFields = {
+  resourceId: z.string().min(1),
+  evidenceRefs: z.array(z.string().min(1)).max(20),
+};
+
+export const RawCreateInternalTicketAction = z
+  .object({
+    actionType: z.literal("create_internal_ticket"),
+    ...rawActionEnvelopeFields,
+    parameters: CreateInternalTicketParameters,
+  })
+  .strict();
+
+export const RawSendCustomerMessageAction = z
+  .object({
+    actionType: z.literal("send_customer_message"),
+    ...rawActionEnvelopeFields,
+    parameters: SendCustomerMessageParameters,
+  })
+  .strict();
+
+export const RawIssueRefundAction = z
+  .object({
+    actionType: z.literal("issue_refund"),
+    ...rawActionEnvelopeFields,
+    parameters: IssueRefundParameters,
+  })
+  .strict();
+
+/** One untrusted proposed action, discriminated by `actionType`. */
+export const RawAction = z.discriminatedUnion("actionType", [
+  RawCreateInternalTicketAction,
+  RawSendCustomerMessageAction,
+  RawIssueRefundAction,
+]);
+export type RawAction = z.infer<typeof RawAction>;
+
+/**
+ * The full untrusted wire shape a model turn returns (TECHNICAL_SPEC.md:
+ * "`model-adapter` returns `unknown` proposal bytes"). `actions` is capped
+ * at 5 — TECHNICAL_SPEC.md's operational limit "maximum actions per run 5"
+ * — enforced directly in the schema rather than by a caller remembering to
+ * check array length afterward.
+ */
+export const RawProposalEnvelope = z
+  .object({
+    actions: z.array(RawAction).min(1).max(5),
+  })
+  .strict();
+export type RawProposalEnvelope = z.infer<typeof RawProposalEnvelope>;
+
+/**
+ * Reasons a raw proposal never became a trusted `ActionProposal`
+ * (STATE_MACHINE.md `PROPOSED -> REJECTED: schema_fail`). Distinct from
+ * `PolicyReasonCode`: these are schema-layer rejections — TEST_PLAN.md's
+ * contracts layer promises "invalid never reaches policy", so a proposal
+ * rejected here never produces a `PolicyDecision` at all.
+ */
+export const ProposalRejectionReason = z.enum([
+  "PROPOSAL_TOO_LARGE",
+  "MALFORMED_PROPOSAL",
+  "UNKNOWN_FIELD",
+  "INVALID_AMOUNT",
+  "PARAMETER_TOO_LARGE",
+  "INVALID_PROPOSAL",
+]);
+export type ProposalRejectionReason = z.infer<typeof ProposalRejectionReason>;

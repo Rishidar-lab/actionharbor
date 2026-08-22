@@ -1,0 +1,23 @@
+{
+  "name": "@actionharbor/model-adapter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The model boundary: a ModelAdapterPort that returns untrusted raw bytes, plus the strict parser that is the only way those bytes become a validated proposal.",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@actionharbor/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  }
+}
