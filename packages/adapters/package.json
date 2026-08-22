@@ -1,0 +1,25 @@
+{
+  "name": "@actionharbor/adapters",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Granular synthetic tool adapters (ticket, message, refund) — real stateful fakes, not hard-coded screenshots. No open-ended shell/code/HTTP tool.",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@actionharbor/contracts": "workspace:*",
+    "@actionharbor/domain": "workspace:*",
+    "@actionharbor/gateway": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  }
+}

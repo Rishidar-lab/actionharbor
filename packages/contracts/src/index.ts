@@ -379,3 +379,59 @@ export const ProposalRejectionReason = z.enum([
   "INVALID_PROPOSAL",
 ]);
 export type ProposalRejectionReason = z.infer<typeof ProposalRejectionReason>;
+
+// ---------------------------------------------------------------------------
+// Adapter receipts (TOOL_CONTRACTS.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * `.strict()` for the same reason `RawAction` is: "Tool outputs are
+ * untrusted. They pass strict schemas ... and cannot contain an audit event
+ * or policy decision" (TOOL_CONTRACTS.md). A receipt claiming an extra field
+ * like `verified` or `policyDecision` (w3-011, "Malicious tool output
+ * claims verified") fails to parse rather than being silently accepted.
+ */
+export const TicketReceipt = z
+  .object({
+    ticketId: z.string().min(1),
+    status: z.literal("open"),
+    title: z.string().min(1).max(120),
+    description: z.string().max(2000).optional(),
+    priority: z.enum(["low", "medium", "high"]),
+    idempotencyKey: z.string().min(1),
+    resourceId: z.string().min(1),
+    createdAt: isoDatetime,
+  })
+  .strict();
+export type TicketReceipt = z.infer<typeof TicketReceipt>;
+
+export const MessageReceipt = z
+  .object({
+    messageId: z.string().min(1),
+    customerId: z.string().min(1),
+    body: z.string().min(1).max(2000),
+    channel: z.enum(["email", "sms"]),
+    idempotencyKey: z.string().min(1),
+    resourceId: z.string().min(1),
+    sentAt: isoDatetime,
+  })
+  .strict();
+export type MessageReceipt = z.infer<typeof MessageReceipt>;
+
+export const RefundReceipt = z
+  .object({
+    refundId: z.string().min(1),
+    orderId: z.string().min(1),
+    amountMinorInteger: z.number().int().positive(),
+    currency: z.string().length(3),
+    reason: z.string().min(1).max(300),
+    idempotencyKey: z.string().min(1),
+    resourceId: z.string().min(1),
+    issuedAt: isoDatetime,
+  })
+  .strict();
+export type RefundReceipt = z.infer<typeof RefundReceipt>;
+
+/** Mirrors `ProposalRejectionReason`'s role, but for the tool-output boundary instead of the model-proposal boundary. */
+export const ToolOutputRejectionReason = z.enum(["INVALID_TOOL_OUTPUT"]);
+export type ToolOutputRejectionReason = z.infer<typeof ToolOutputRejectionReason>;
