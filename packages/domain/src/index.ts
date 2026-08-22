@@ -9,3 +9,10 @@ export {
   hashCanonical,
   computeProposalHash,
 } from "./hash.js";
+export {
+  type ApprovalCheckResult,
+  type ConsumeApprovalResult,
+  checkApproval,
+  consumeApproval,
+  selectApprovalTrigger,
+} from "./approval.js";

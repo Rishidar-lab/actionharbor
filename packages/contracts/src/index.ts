@@ -435,3 +435,61 @@ export type RefundReceipt = z.infer<typeof RefundReceipt>;
 /** Mirrors `ProposalRejectionReason`'s role, but for the tool-output boundary instead of the model-proposal boundary. */
 export const ToolOutputRejectionReason = z.enum(["INVALID_TOOL_OUTPUT"]);
 export type ToolOutputRejectionReason = z.infer<typeof ToolOutputRejectionReason>;
+
+// ---------------------------------------------------------------------------
+// Approval (DOMAIN_MODEL.md, POLICY_MODEL.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * `Approval {id, proposalHash, approverId, scope, expiresAt, approvedAt}`
+ * (DOMAIN_MODEL.md). Two fields beyond that literal list, for the same
+ * reason `AUDIT_EVENT_SCHEMA.md` carries more fields than `AuditEvent`'s
+ * one-line summary — the terse brace list is illustrative, not exhaustive:
+ * `status` (mirrors `Capability.status` from Gate 0 — needed to make
+ * single-use enforceable at all) and `policyVersion` (POLICY_MODEL.md: "An
+ * approval references the version used; changing policy invalidates
+ * pending approvals").
+ */
+export const ApprovalStatus = z.enum(["active", "consumed", "invalidated"]);
+export type ApprovalStatus = z.infer<typeof ApprovalStatus>;
+
+export const ApprovalScope = z
+  .object({
+    actionType: ActionType,
+    resourceId: z.string().min(1),
+  })
+  .strict();
+export type ApprovalScope = z.infer<typeof ApprovalScope>;
+
+export const Approval = z
+  .object({
+    id: z.string().min(1),
+    proposalHash: z.string().min(1),
+    approverId: z.string().min(1),
+    scope: ApprovalScope,
+    policyVersion: z.string().min(1),
+    expiresAt: isoDatetime,
+    approvedAt: isoDatetime,
+    status: ApprovalStatus,
+  })
+  .strict();
+export type Approval = z.infer<typeof Approval>;
+
+/** The exact call an approval is being asked to authorize — same shape/spirit as `CapabilityRequest`. */
+export const ApprovalRequest = z
+  .object({
+    proposalHash: z.string().min(1),
+    actionType: ActionType,
+    resourceId: z.string().min(1),
+  })
+  .strict();
+export type ApprovalRequest = z.infer<typeof ApprovalRequest>;
+
+export const ApprovalRejectionReason = z.enum([
+  "APPROVAL_STATUS_INVALID",
+  "APPROVAL_ALREADY_CONSUMED",
+  "APPROVAL_EXPIRED",
+  "PLAN_HASH_MISMATCH",
+  "APPROVAL_SCOPE_MISMATCH",
+]);
+export type ApprovalRejectionReason = z.infer<typeof ApprovalRejectionReason>;
