@@ -72,6 +72,19 @@ importers:
         specifier: ^4.1.10
         version: 4.1.11(@types/node@22.20.1)(vite@8.2.2(@types/node@22.20.1))
 
+  packages/policy:
+    dependencies:
+      '@actionharbor/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+    devDependencies:
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.11(@types/node@22.20.1)(vite@8.2.2(@types/node@22.20.1))
+
 packages:
 
   '@eslint-community/eslint-utils@4.10.1':

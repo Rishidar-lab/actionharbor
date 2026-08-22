@@ -231,3 +231,38 @@ export const RunStateTrigger = z.enum([
   "concurrent_approval_conflict",
 ]);
 export type RunStateTrigger = z.infer<typeof RunStateTrigger>;
+
+// ---------------------------------------------------------------------------
+// Policy (POLICY_MODEL.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * "It returns `ALLOW`, `REQUIRE_APPROVAL`, or `DENY` with stable reason
+ * codes. The model never supplies a policy outcome." (POLICY_MODEL.md)
+ */
+export const PolicyOutcome = z.enum(["ALLOW", "REQUIRE_APPROVAL", "DENY"]);
+export type PolicyOutcome = z.infer<typeof PolicyOutcome>;
+
+/**
+ * Every reason code the policy engine can emit, each tied to one named rule
+ * in POLICY_MODEL.md or ACTION_MODEL.md. `POLICY_UNAVAILABLE` is special: "a
+ * policy engine error is `POLICY_UNAVAILABLE`, not allow" — it is what a
+ * crash inside evaluation turns into, never a rule outcome on its own.
+ */
+export const PolicyReasonCode = z.enum([
+  "MISSING_PRINCIPAL",
+  "UNKNOWN_ACTION_TYPE",
+  "AUDIT_WRITE_FORBIDDEN",
+  "MODEL_HAS_NO_AUTHORITY",
+  "CROSS_TENANT_RESOURCE",
+  "INTENT_EXPIRED",
+  "MISSING_FINANCE_ROLE",
+  "HIGH_IMPACT",
+  "EVIDENCE_NOT_FOUND",
+  "RESOURCE_NOT_ACTIVE",
+  "EXTERNAL_COMMUNICATION",
+  "IRREVERSIBLE_ACTION",
+  "AFFECTS_OTHER_PRINCIPAL",
+  "POLICY_UNAVAILABLE",
+]);
+export type PolicyReasonCode = z.infer<typeof PolicyReasonCode>;
