@@ -1,0 +1,31 @@
+{
+  "name": "actionharbor",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --check .",
+    "format:fix": "prettier --write .",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "pnpm -r --if-present run build",
+    "audit": "pnpm audit --prod",
+    "secret-scan": "node scripts/secret-scan.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.19.0",
+    "@types/node": "^22.0.0",
+    "eslint": "^9.19.0",
+    "globals": "^15.14.0",
+    "prettier": "^3.9.6",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.67.0",
+    "vitest": "^4.1.10"
+  }
+}
