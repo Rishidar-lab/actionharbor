@@ -1,7 +1,7 @@
 import type { Capability, SendCustomerMessageParameters } from "@actionharbor/contracts";
 import { CounterIdGenerator, FixedClock } from "@actionharbor/domain";
 import { beforeEach, describe, expect, it } from "vitest";
-import { CapabilityActionTypeMismatchError, IdempotencyKeyPayloadMismatchError } from "./errors.js";
+import { CapabilityActionTypeMismatchError, CapabilityNotActiveError, IdempotencyKeyPayloadMismatchError } from "./errors.js";
 import { FakeMessageAdapter } from "./message-adapter.js";
 
 const NOW = new Date("2026-08-22T09:00:00Z");
@@ -68,5 +68,11 @@ describe("FakeMessageAdapter", () => {
     const receipt = await adapter.execute({ operationId: "op_1", idempotencyKey: "key-1" }, makeCapability(), PARAMS);
     expect(await adapter.lookup("op_1")).toEqual({ status: "found", receipt });
     expect(await adapter.lookup("nonexistent")).toEqual({ status: "unknown" });
+  });
+
+  it("Gate 6 defence in depth: rejects an expired capability even when called directly", async () => {
+    await expect(
+      adapter.execute({ operationId: "op_1", idempotencyKey: "key-1" }, makeCapability({ expiresAt: "2000-01-01T00:00:00Z" }), PARAMS),
+    ).rejects.toThrow(CapabilityNotActiveError);
   });
 });

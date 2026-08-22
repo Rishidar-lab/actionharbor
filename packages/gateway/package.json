@@ -15,7 +15,8 @@
   },
   "dependencies": {
     "@actionharbor/contracts": "workspace:*",
-    "@actionharbor/domain": "workspace:*"
+    "@actionharbor/domain": "workspace:*",
+    "@actionharbor/policy": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.9.3",

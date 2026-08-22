@@ -86,6 +86,12 @@ export const CapabilityRejectionReason = z.enum([
   "CAPABILITY_STATUS_INVALID",
   "CAPABILITY_EXPIRED",
   "CAPABILITY_SCOPE_MISMATCH",
+  // Gate 6 additions — see packages/domain/src/capability.ts and
+  // packages/gateway/src/capability-registry.ts for where each fires.
+  "CAPABILITY_MALFORMED",
+  "CAPABILITY_UNKNOWN",
+  "CAPABILITY_NONCE_MISMATCH",
+  "CAPABILITY_ALREADY_CONSUMED",
 ]);
 export type CapabilityRejectionReason = z.infer<typeof CapabilityRejectionReason>;
 
@@ -493,3 +499,55 @@ export const ApprovalRejectionReason = z.enum([
   "APPROVAL_SCOPE_MISMATCH",
 ]);
 export type ApprovalRejectionReason = z.infer<typeof ApprovalRejectionReason>;
+
+// ---------------------------------------------------------------------------
+// Precondition / freshness check (ACTION_MODEL.md, STATE_MACHINE.md AUTHORIZED -> STALE)
+// ---------------------------------------------------------------------------
+
+/**
+ * Reasons the pre-execution freshness recheck refuses to let a minted
+ * capability execute. Two distinct shapes, each pinned by one evaluation
+ * case: w3-008 ("Plan changed after approval") reports `[PLAN_HASH_MISMATCH]`
+ * alone; w3-010 ("Resource version changed before execute") reports
+ * `[PRECONDITION_FAILED, RESOURCE_VERSION_CHANGED]` together. Both reach
+ * `STALE` via the same `plan_or_resource_changed` trigger, but the reported
+ * reason codes are NOT interchangeable — this is evidence straight from the
+ * frozen corpus, not a stylistic choice.
+ */
+export const PreconditionRejectionReason = z.enum(["PLAN_HASH_MISMATCH", "PRECONDITION_FAILED", "RESOURCE_VERSION_CHANGED"]);
+export type PreconditionRejectionReason = z.infer<typeof PreconditionRejectionReason>;
+
+// ---------------------------------------------------------------------------
+// Operation (DOMAIN_MODEL.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * `Operation {id, capabilityId, idempotencyKey, state, adapterReceipt,
+ * preconditionSnapshot, postconditionReport}` (DOMAIN_MODEL.md). Gate 6
+ * only ever produces `succeeded`/`failed`/`unknown_outcome` and leaves
+ * `postconditionReport` unset — independent postcondition verification is
+ * Gate 7's job (STATE_MACHINE.md: "`VERIFIED` requires an independent
+ * postcondition check"), not something Gate 6's own execution capture may
+ * assert for itself.
+ */
+export const OperationState = z.enum(["succeeded", "failed", "unknown_outcome"]);
+export type OperationState = z.infer<typeof OperationState>;
+
+// ---------------------------------------------------------------------------
+// Capability minting (Gate 6 — the single authority-issuing step)
+// ---------------------------------------------------------------------------
+
+/**
+ * The only reasons a `Capability` refuses to be minted. There is
+ * deliberately no generic/catch-all value here: `mintCapability` accepts
+ * exactly two forms of evidence (a policy `ALLOW` verdict, or a consumed
+ * `Approval`), and every way each can fail to actually authorize the exact
+ * request being minted for has its own named reason.
+ */
+export const CapabilityMintRejectionReason = z.enum([
+  "POLICY_DID_NOT_ALLOW",
+  "APPROVAL_NOT_CONSUMED",
+  "PLAN_HASH_MISMATCH",
+  "APPROVAL_SCOPE_MISMATCH",
+]);
+export type CapabilityMintRejectionReason = z.infer<typeof CapabilityMintRejectionReason>;

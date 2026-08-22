@@ -1,6 +1,6 @@
 import type { Capability, CapabilityRequest } from "@actionharbor/contracts";
 import { describe, expect, it } from "vitest";
-import { validateCapability } from "./capability.js";
+import { parseAndValidateCapability, validateCapability } from "./capability.js";
 
 const NOW = new Date("2026-08-22T09:00:00Z");
 
@@ -113,5 +113,46 @@ describe("validateCapability", () => {
       NOW,
     );
     expect(result).toEqual({ ok: false, reasonCode: "CAPABILITY_STATUS_INVALID" });
+  });
+
+  it("Gate 6: an unparseable expiresAt fails closed as CAPABILITY_EXPIRED rather than silently passing (NaN <= x is always false in JS)", () => {
+    const result = validateCapability(
+      makeCapability({ expiresAt: "not-a-date" as unknown as Capability["expiresAt"] }),
+      makeRequest(),
+      NOW,
+    );
+    expect(result).toEqual({ ok: false, reasonCode: "CAPABILITY_EXPIRED" });
+  });
+});
+
+describe("parseAndValidateCapability", () => {
+  it("accepts a well-formed, matching capability and returns the parsed object", () => {
+    const result = parseAndValidateCapability(makeCapability(), makeRequest(), NOW);
+    expect(result).toEqual({ ok: true, capability: makeCapability() });
+  });
+
+  it("rejects a completely wrong shape as CAPABILITY_MALFORMED", () => {
+    const result = parseAndValidateCapability({ foo: "bar" }, makeRequest(), NOW);
+    expect(result).toEqual({ ok: false, reasonCode: "CAPABILITY_MALFORMED" });
+  });
+
+  it("rejects null/undefined as CAPABILITY_MALFORMED, never throwing", () => {
+    expect(parseAndValidateCapability(null, makeRequest(), NOW)).toEqual({ ok: false, reasonCode: "CAPABILITY_MALFORMED" });
+    expect(parseAndValidateCapability(undefined, makeRequest(), NOW)).toEqual({ ok: false, reasonCode: "CAPABILITY_MALFORMED" });
+  });
+
+  it("rejects a capability with an extra, unrecognized field (schema is .strict())", () => {
+    const result = parseAndValidateCapability({ ...makeCapability(), extra: "smuggled" }, makeRequest(), NOW);
+    expect(result).toEqual({ ok: false, reasonCode: "CAPABILITY_MALFORMED" });
+  });
+
+  it("rejects a capability whose expiresAt is not a real ISO datetime string as CAPABILITY_MALFORMED (caught before validateCapability even runs)", () => {
+    const result = parseAndValidateCapability({ ...makeCapability(), expiresAt: "not-a-date" }, makeRequest(), NOW);
+    expect(result).toEqual({ ok: false, reasonCode: "CAPABILITY_MALFORMED" });
+  });
+
+  it("still applies validateCapability's checks once parsing succeeds (e.g. an expired-but-well-formed capability)", () => {
+    const result = parseAndValidateCapability(makeCapability({ expiresAt: "2000-01-01T00:00:00Z" }), makeRequest(), NOW);
+    expect(result).toEqual({ ok: false, reasonCode: "CAPABILITY_EXPIRED" });
   });
 });

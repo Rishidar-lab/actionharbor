@@ -2,7 +2,7 @@ import type { Capability, MessageReceipt, SendCustomerMessageParameters } from "
 import type { Clock, IdGenerator } from "@actionharbor/domain";
 import { hashCanonical } from "@actionharbor/domain";
 import type { AdapterLookupResult, AdapterOperation, AdapterPort } from "@actionharbor/gateway";
-import { CapabilityActionTypeMismatchError, IdempotencyKeyPayloadMismatchError } from "./errors.js";
+import { assertCapabilityActive, CapabilityActionTypeMismatchError, IdempotencyKeyPayloadMismatchError } from "./errors.js";
 import { validateAdapterReceipt } from "./validate-receipt.js";
 
 interface IdempotencyRecord {
@@ -32,6 +32,7 @@ export class FakeMessageAdapter implements AdapterPort<SendCustomerMessageParame
     if (capability.actionType !== this.actionType) {
       throw new CapabilityActionTypeMismatchError(this.actionType, capability.actionType);
     }
+    assertCapabilityActive(capability, this.clock.now());
 
     const payloadHash = hashCanonical(params);
     const existing = this.byIdempotencyKey.get(operation.idempotencyKey);

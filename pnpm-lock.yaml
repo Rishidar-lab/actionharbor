@@ -45,6 +45,12 @@ importers:
         specifier: workspace:*
         version: link:../gateway
     devDependencies:
+      '@actionharbor/model-adapter':
+        specifier: workspace:*
+        version: link:../model-adapter
+      '@actionharbor/policy':
+        specifier: workspace:*
+        version: link:../policy
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -83,6 +89,9 @@ importers:
       '@actionharbor/domain':
         specifier: workspace:*
         version: link:../domain
+      '@actionharbor/policy':
+        specifier: workspace:*
+        version: link:../policy
     devDependencies:
       typescript:
         specifier: ^5.9.3
