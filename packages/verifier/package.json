@@ -1,9 +1,9 @@
 {
-  "name": "@actionharbor/gateway",
+  "name": "@actionharbor/verifier",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "The action gateway: the only policy enforcement point allowed to call an adapter.",
+  "description": "Independent postcondition verification and the audit events verification decisions produce. No adapter calls, no I/O — a function of the receipt and the expected state only.",
   "exports": {
     ".": {
       "types": "./src/index.ts",
@@ -15,9 +15,7 @@
   },
   "dependencies": {
     "@actionharbor/contracts": "workspace:*",
-    "@actionharbor/domain": "workspace:*",
-    "@actionharbor/policy": "workspace:*",
-    "@actionharbor/verifier": "workspace:*"
+    "@actionharbor/domain": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.9.3",

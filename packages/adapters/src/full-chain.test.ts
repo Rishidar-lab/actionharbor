@@ -75,7 +75,9 @@ describe("full chain — ALLOW path: model intent becomes exactly one real ticke
       operation: { operationId: "op_1", idempotencyKey: "key-1" },
       params: action.parameters,
       clock,
+      idGenerator,
       precondition: { currentProposalHash: proposalHash, currentResourceVersion: 1, expectedResourceVersion: 1 },
+      postcondition: { actionType: "create_internal_ticket", idempotencyKey: "key-1" },
     });
 
     expect(result.ok).toBe(true);
@@ -159,7 +161,15 @@ describe("full chain — REQUIRE_APPROVAL path: model intent becomes exactly one
       operation: { operationId: "op_1", idempotencyKey: "key-1" },
       params: action.parameters,
       clock,
+      idGenerator,
       precondition: { currentProposalHash: proposalHash, currentResourceVersion: 1, expectedResourceVersion: 1 },
+      postcondition: {
+        actionType: "send_customer_message",
+        idempotencyKey: "key-1",
+        customerId: action.parameters.customerId,
+        body: action.parameters.body,
+        channel: action.parameters.channel,
+      },
     });
 
     expect(result.ok).toBe(true);

@@ -551,3 +551,79 @@ export const CapabilityMintRejectionReason = z.enum([
   "APPROVAL_SCOPE_MISMATCH",
 ]);
 export type CapabilityMintRejectionReason = z.infer<typeof CapabilityMintRejectionReason>;
+
+// ---------------------------------------------------------------------------
+// Verification (Gate 7 — STATE_MACHINE.md EXECUTING -> {VERIFIED, FAILED,
+// UNKNOWN_OUTCOME}, and UNKNOWN_OUTCOME -> {VERIFIED, FAILED,
+// RECONCILIATION_REQUIRED})
+// ---------------------------------------------------------------------------
+
+/**
+ * Reason codes a verification decision reports. Each is pinned by one
+ * evaluation case: `UNKNOWN_OUTCOME` (w3-012, a timeout whose later lookup
+ * is inconclusive), `RECONCILED_SUCCESS` (w3-013, a timeout whose later
+ * lookup confirms success — deliberately distinct from an ordinary
+ * synchronous pass, because the audit trail should show this was resolved
+ * by reconciliation, not by the original call), `POSTCONDITION_UNVERIFIED`
+ * (w3-020, an adapter response — malformed or merely not satisfying what
+ * was required — that does not prove the claimed side effect).
+ */
+export const VerificationReasonCode = z.enum(["UNKNOWN_OUTCOME", "RECONCILED_SUCCESS", "POSTCONDITION_UNVERIFIED"]);
+export type VerificationReasonCode = z.infer<typeof VerificationReasonCode>;
+
+/**
+ * The audit event types Gate 7 emits. A minimal, faithful SUBSET of
+ * AUDIT_EVENT_SCHEMA.md's vocabulary — `sequence`, `prev_hash`, `hash`
+ * (the hash chain itself), and `run_id`/`request_id` (which need a
+ * persisted run/API layer that does not exist yet) are Gate 8/9's job.
+ * What Gate 7 can and does guarantee now: every one of these events is
+ * constructed exclusively from deterministic verification inputs, by
+ * server code, never from model output — matching the exact vocabulary
+ * `04-week3-evaluation/adversarial_cases.json` expects in
+ * `required_audit_events` for w3-001, w3-010, w3-012, w3-013, and w3-020.
+ */
+export const AuditEventType = z.enum([
+  "EXECUTION_STARTED",
+  "PRECONDITION_FAILED",
+  "POSTCONDITION_VERIFIED",
+  "POSTCONDITION_FAILED",
+  "EXECUTION_UNKNOWN",
+  "RECONCILIATION_REQUIRED",
+]);
+export type AuditEventType = z.infer<typeof AuditEventType>;
+
+/**
+ * `actor.kind` per AUDIT_EVENT_SCHEMA.md. Every event Gate 7 constructs
+ * uses `{kind: "server", id: "execution-gateway-v1"}` — verification is
+ * never model- or human-authored.
+ */
+export const AuditActorKind = z.enum(["server", "human", "model", "tool"]);
+export type AuditActorKind = z.infer<typeof AuditActorKind>;
+
+/**
+ * `subject.kind` per AUDIT_EVENT_SCHEMA.md, widened to include
+ * `"operation"` — the example list ("action|approval|capability|resource")
+ * predates DOMAIN_MODEL.md's `Operation` entity being fully wired up
+ * (Gate 6/7); every verification event's subject is an operation.
+ */
+export const AuditSubjectKind = z.enum(["action", "approval", "capability", "resource", "operation"]);
+export type AuditSubjectKind = z.infer<typeof AuditSubjectKind>;
+
+/**
+ * A minimal, unchained audit event — the record Gate 8's ledger will wrap
+ * with `sequence`/`prev_hash`/`hash` once an append-only store exists.
+ * Already true of this shape: nothing about it can be model-authored (no
+ * field takes untrusted input directly; every value is either a server
+ * constant or derived from already-validated domain values).
+ */
+export const VerificationAuditEvent = z
+  .object({
+    eventId: z.string().min(1),
+    type: AuditEventType,
+    actor: z.object({ kind: AuditActorKind, id: z.string().min(1) }).strict(),
+    subject: z.object({ kind: AuditSubjectKind, id: z.string().min(1) }).strict(),
+    payload: z.record(z.string(), z.unknown()),
+    occurredAt: isoDatetime,
+  })
+  .strict();
+export type VerificationAuditEvent = z.infer<typeof VerificationAuditEvent>;

@@ -1,4 +1,10 @@
-import type { OperationState } from "@actionharbor/contracts";
+import type { OperationState, VerificationReasonCode } from "@actionharbor/contracts";
+
+/** DOMAIN_MODEL.md `Operation.postconditionReport` — filled by Gate 7's verifier; `undefined` means no postcondition check has run yet (e.g. still `unknown_outcome`). */
+export interface PostconditionReport {
+  readonly verified: boolean;
+  readonly reasonCode?: VerificationReasonCode;
+}
 
 export interface OperationRecord<TReceipt> {
   readonly operationId: string;
@@ -8,6 +14,7 @@ export interface OperationRecord<TReceipt> {
   readonly state: OperationState;
   readonly receipt?: TReceipt;
   readonly errorMessage?: string;
+  readonly postconditionReport?: PostconditionReport;
 }
 
 export type OperationLookup<TReceipt> =

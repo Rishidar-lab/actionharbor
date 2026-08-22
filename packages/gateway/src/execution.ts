@@ -1,10 +1,14 @@
-import type { CapabilityRejectionReason, CapabilityRequest, PreconditionRejectionReason } from "@actionharbor/contracts";
-import type { Clock } from "@actionharbor/domain";
+import type { CapabilityRejectionReason, CapabilityRequest, PreconditionRejectionReason, VerificationAuditEvent } from "@actionharbor/contracts";
+import type { Clock, IdGenerator } from "@actionharbor/domain";
 import { checkPreconditions, hashCanonical, parseAndValidateCapability } from "@actionharbor/domain";
+import { buildVerificationAuditEvent, verifyPostcondition, type PostconditionExpectation } from "@actionharbor/verifier";
 import type { AdapterOperation, AdapterPort } from "./adapter-port.js";
 import type { CapabilityRegistry } from "./capability-registry.js";
 import { invokeAdapter } from "./gateway.js";
 import type { OperationRecord, OperationStore } from "./operation-store.js";
+
+/** TECHNICAL_SPEC.md operational limit: "per-run execution budget 30 seconds; every timeout becomes UNKNOWN_OUTCOME pending lookup." */
+export const DEFAULT_EXECUTION_TIMEOUT_MS = 30_000;
 
 export interface ExecuteActionInput<TParams, TReceipt> {
   /** Untrusted-shaped on purpose — see `parseAndValidateCapability`. Never assume this is already a well-formed `Capability`. */
@@ -16,81 +20,118 @@ export interface ExecuteActionInput<TParams, TReceipt> {
   readonly operation: AdapterOperation;
   readonly params: TParams;
   readonly clock: Clock;
+  readonly idGenerator: IdGenerator;
   readonly precondition: {
     readonly currentProposalHash: string;
     readonly currentResourceVersion: number;
     readonly expectedResourceVersion: number;
   };
+  /** What a genuine postcondition pass looks like for this exact call (Gate 7). */
+  readonly postcondition: PostconditionExpectation;
+  readonly timeoutMs?: number;
 }
 
 export type ExecuteActionFailure =
-  | { readonly ok: false; readonly stage: "capability"; readonly reasonCode: CapabilityRejectionReason }
-  | { readonly ok: false; readonly stage: "precondition"; readonly reasonCodes: readonly PreconditionRejectionReason[] }
-  | { readonly ok: false; readonly stage: "idempotency"; readonly reasonCode: "IDEMPOTENCY_KEY_PAYLOAD_MISMATCH" }
-  | { readonly ok: false; readonly stage: "adapter"; readonly errorMessage: string };
+  | { readonly ok: false; readonly stage: "capability"; readonly reasonCode: CapabilityRejectionReason; readonly auditEvents: readonly VerificationAuditEvent[] }
+  | { readonly ok: false; readonly stage: "precondition"; readonly reasonCodes: readonly PreconditionRejectionReason[]; readonly auditEvents: readonly VerificationAuditEvent[] }
+  | { readonly ok: false; readonly stage: "idempotency"; readonly reasonCode: "IDEMPOTENCY_KEY_PAYLOAD_MISMATCH"; readonly auditEvents: readonly VerificationAuditEvent[] }
+  | { readonly ok: false; readonly stage: "postcondition"; readonly reasonCode: "POSTCONDITION_UNVERIFIED"; readonly auditEvents: readonly VerificationAuditEvent[] }
+  | { readonly ok: false; readonly stage: "unknown_outcome"; readonly operationId: string; readonly reasonCode: "UNKNOWN_OUTCOME"; readonly auditEvents: readonly VerificationAuditEvent[] }
+  /** STATE_MACHINE.md `UNKNOWN_OUTCOME -> RECONCILIATION_REQUIRED: lookup_inconclusive` — distinct from the initial `unknown_outcome` stage: this means a reconciliation lookup was actually attempted and still could not resolve it (w3-012), not merely "we haven't looked yet." */
+  | { readonly ok: false; readonly stage: "reconciliation_required"; readonly operationId: string; readonly reasonCode: "UNKNOWN_OUTCOME"; readonly auditEvents: readonly VerificationAuditEvent[] }
+  | { readonly ok: false; readonly stage: "adapter"; readonly errorMessage: string; readonly auditEvents: readonly VerificationAuditEvent[] };
 
-export type ExecuteActionResult<TReceipt> =
-  | { readonly ok: true; readonly receipt: TReceipt; readonly replay: boolean; readonly operationId: string }
-  | ExecuteActionFailure;
+export type ExecuteActionSuccess<TReceipt> = {
+  readonly ok: true;
+  readonly receipt: TReceipt;
+  readonly replay: boolean;
+  readonly operationId: string;
+  readonly auditEvents: readonly VerificationAuditEvent[];
+  /** Present, and always `"RECONCILED_SUCCESS"`, only when this success was resolved via a reconciliation lookup rather than the original synchronous call (w3-013). */
+  readonly reasonCode?: "RECONCILED_SUCCESS";
+};
+
+export type ExecuteActionResult<TReceipt> = ExecuteActionSuccess<TReceipt> | ExecuteActionFailure;
+
+type RaceOutcome<T> = { readonly kind: "resolved"; readonly value: T } | { readonly kind: "rejected"; readonly error: unknown } | { readonly kind: "timeout" };
 
 /**
- * THE single legitimate path to privileged execution (ARCHITECTURE.md):
+ * Races `promise` against `timeoutMs`. If the timeout wins, `promise` is
+ * left running — this function does not (cannot, in plain JS) cancel it —
+ * and a LATE resolution or rejection is deliberately dropped rather than
+ * reported: the caller has already committed to `UNKNOWN_OUTCOME`, and a
+ * signal arriving after that decision is exactly what "the side effect may
+ * have happened, we don't know" means. This is what makes the timeout path
+ * safe to test deterministically with `vi.useFakeTimers()` without needing
+ * real wall-clock delay.
+ */
+function raceWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<RaceOutcome<T>> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        resolve({ kind: "timeout" });
+      }
+    }, timeoutMs);
+
+    promise.then(
+      (value) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve({ kind: "resolved", value });
+        }
+      },
+      (error: unknown) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve({ kind: "rejected", error });
+        }
+      },
+    );
+  });
+}
+
+/**
+ * THE single legitimate path to privileged execution AND the boundary
+ * between "execution attempted" and "execution proven successful"
+ * (ARCHITECTURE.md; STATE_MACHINE.md `EXECUTING -> {VERIFIED, FAILED,
+ * UNKNOWN_OUTCOME}` and `UNKNOWN_OUTCOME -> {VERIFIED, FAILED,
+ * RECONCILIATION_REQUIRED}`):
  *
  *   capability (schema-parsed + scope/expiry validated against `request`)
  *   -> fresh precondition check (plan / resource version unchanged)
  *   -> idempotency check
- *   -> registry membership + single-use consumption
- *   -> adapter, through Gate 0's invokeAdapter (the only caller of `.execute`)
- *   -> operation record captured
+ *     - "new": registry consume -> adapter call raced against a timeout
+ *       -> independent postcondition verification -> SUCCEEDED / FAILED
+ *     - "duplicate", prior state SUCCEEDED/FAILED: return the recorded
+ *       outcome, never call the adapter again
+ *     - "duplicate", prior state UNKNOWN_OUTCOME: reconcile via
+ *       `adapter.lookup` — NEVER `adapter.execute` — then verify whatever
+ *       is found the same way a fresh call would
+ *     - "conflict": rejected before the adapter is ever called
  *
- * Every stage fails closed and returns before the next runs. No path
- * through this function reaches `adapter.execute` except the one at the
- * bottom, and that call only happens after every earlier stage returned ok.
- *
- * Registry consumption is deliberately the LAST check before the adapter,
- * not the first: `parseAndValidateCapability` only inspects the fields of
- * the object the caller presented (which a client's own retained copy
- * still shows as `status: "active"` even after the registry's copy was
- * marked consumed server-side), so it is safe to run before the registry
- * check and does not itself spend the capability. A genuine idempotent
- * replay — same idempotency key, same payload, the client re-presenting
- * the same capability it already used — is served from `OperationStore`
- * BEFORE the registry is ever consulted, so a legitimate retry is never
- * rejected as `CAPABILITY_ALREADY_CONSUMED` just because the original call
- * already succeeded. The capability is only actually spent (registry
- * `consume()`) immediately before a GENUINELY NEW attempt reaches the
- * adapter — including a new attempt that goes on to fail, which still
- * burns it (see the idempotency test suite: a failed execution cannot be
- * retried with the same capability, only with a freshly minted one).
- *
- * RESIDUAL LIMITATION, documented rather than silently assumed away: this
- * function is the enforcement point ONLY for callers that go through it.
- * Nothing in this module stops other application code from importing an
- * `AdapterPort` implementation directly and calling `.execute` on it
- * without ever calling `executeAction` — TypeScript/JS module boundaries do
- * not make a class's public method unreachable to another importer in the
- * same process. What IS true, and is what the direct-adapter-bypass test in
- * `execution.test.ts` proves: (1) nothing reachable from model output can
- * ever produce a `Capability` value at all (proposals and their strict
- * schemas have no capability-shaped field — Gate 3), so a bypassing caller
- * would have to hand-construct one; and (2) even a well-formed,
- * correctly-scoped, hand-constructed `Capability` is rejected by
- * `CapabilityRegistry` as `CAPABILITY_UNKNOWN` the moment it reaches this
- * function, because it was never `record()`ed by `mintCapability`. The gap
- * this does NOT close: a caller who bypasses `executeAction` entirely and
- * invokes an adapter instance's `.execute` directly is not stopped by
- * anything in this module — only by there being no code path from
- * untrusted input to such a call anywhere else in the codebase, which is a
- * property of the whole system's wiring, not of this function alone.
+ * The core invariant: NO path in this function reaches `ok: true` without
+ * `verifyPostcondition` having actually run and passed on a receipt that
+ * came from `adapter.execute` or `adapter.lookup` — never from the
+ * caller's narration, never from a transport-success signal alone
+ * (`invokeAdapter` resolving is not itself treated as success), never from
+ * anything the model could have influenced (the model has no reachable
+ * path to either function — Gate 3/6's boundaries).
  */
 export async function executeAction<TParams, TReceipt>(
   input: ExecuteActionInput<TParams, TReceipt>,
 ): Promise<ExecuteActionResult<TReceipt>> {
   const now = input.clock.now();
+  const operationId = input.operation.operationId;
+  const audit = (type: Parameters<typeof buildVerificationAuditEvent>[0], payload: Record<string, unknown>): VerificationAuditEvent =>
+    buildVerificationAuditEvent(type, operationId, payload, input.idGenerator, input.clock);
 
   const capabilityCheck = parseAndValidateCapability(input.capabilityRaw, input.request, now);
   if (!capabilityCheck.ok) {
-    return { ok: false, stage: "capability", reasonCode: capabilityCheck.reasonCode };
+    return { ok: false, stage: "capability", reasonCode: capabilityCheck.reasonCode, auditEvents: [] };
   }
   const capability = capabilityCheck.capability;
 
@@ -101,69 +142,60 @@ export async function executeAction<TParams, TReceipt>(
     expectedResourceVersion: input.precondition.expectedResourceVersion,
   });
   if (!preconditionResult.ok) {
-    return { ok: false, stage: "precondition", reasonCodes: preconditionResult.reasonCodes };
+    const auditEvents = [audit("PRECONDITION_FAILED", { reasonCodes: preconditionResult.reasonCodes })];
+    return { ok: false, stage: "precondition", reasonCodes: preconditionResult.reasonCodes, auditEvents };
   }
 
   const payloadHash = hashCanonical(input.params);
   const idempotencyLookup = input.operationStore.check(input.operation.idempotencyKey, payloadHash);
+
   if (idempotencyLookup.status === "conflict") {
-    return { ok: false, stage: "idempotency", reasonCode: "IDEMPOTENCY_KEY_PAYLOAD_MISMATCH" };
-  }
-  if (idempotencyLookup.status === "duplicate") {
-    const prior = idempotencyLookup.operation;
-    if (prior.state === "succeeded" && prior.receipt !== undefined) {
-      return { ok: true, receipt: prior.receipt, replay: true, operationId: prior.operationId };
-    }
-    return { ok: false, stage: "adapter", errorMessage: prior.errorMessage ?? "prior attempt did not succeed" };
+    return { ok: false, stage: "idempotency", reasonCode: "IDEMPOTENCY_KEY_PAYLOAD_MISMATCH", auditEvents: [] };
   }
 
+  if (idempotencyLookup.status === "duplicate") {
+    return reconcileDuplicate(input, idempotencyLookup.operation, audit);
+  }
+
+  // "new": a genuinely fresh attempt. Only this path may consume the
+  // capability and call the adapter.
   const consumeResult = input.registry.consume(capability.id, capability.nonce);
   if (!consumeResult.ok) {
-    return { ok: false, stage: "capability", reasonCode: consumeResult.reasonCode };
+    return { ok: false, stage: "capability", reasonCode: consumeResult.reasonCode, auditEvents: [] };
   }
 
-  let record: OperationRecord<TReceipt>;
-  try {
-    const gatewayResult = await invokeAdapter({
+  const auditEvents: VerificationAuditEvent[] = [audit("EXECUTION_STARTED", { actionType: input.request.actionType })];
+  const timeoutMs = input.timeoutMs ?? DEFAULT_EXECUTION_TIMEOUT_MS;
+
+  const raceResult = await raceWithTimeout(
+    invokeAdapter({
       capability,
       request: input.request,
       adapter: input.adapter,
       operation: input.operation,
       params: input.params,
       clock: input.clock,
-    });
+    }),
+    timeoutMs,
+  );
 
-    if (!gatewayResult.ok) {
-      // The gateway's own capability re-check failed. Should be unreachable
-      // here since this function already validated the same capability
-      // against the same request — kept as a defence-in-depth backstop,
-      // not a path this function's own logic is expected to take.
-      record = {
-        operationId: input.operation.operationId,
-        idempotencyKey: input.operation.idempotencyKey,
-        capabilityId: capability.id,
-        payloadHash,
-        state: "failed",
-        errorMessage: `gateway rejected: ${gatewayResult.reasonCode}`,
-      };
-      input.operationStore.record(record);
-      return { ok: false, stage: "capability", reasonCode: gatewayResult.reasonCode };
-    }
-
-    record = {
-      operationId: input.operation.operationId,
+  if (raceResult.kind === "timeout") {
+    const record: OperationRecord<TReceipt> = {
+      operationId,
       idempotencyKey: input.operation.idempotencyKey,
       capabilityId: capability.id,
       payloadHash,
-      state: "succeeded",
-      receipt: gatewayResult.receipt,
+      state: "unknown_outcome",
     };
     input.operationStore.record(record);
-    return { ok: true, receipt: gatewayResult.receipt, replay: false, operationId: input.operation.operationId };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    record = {
-      operationId: input.operation.operationId,
+    auditEvents.push(audit("EXECUTION_UNKNOWN", { reasonCode: "UNKNOWN_OUTCOME" }));
+    return { ok: false, stage: "unknown_outcome", operationId, reasonCode: "UNKNOWN_OUTCOME", auditEvents };
+  }
+
+  if (raceResult.kind === "rejected") {
+    const errorMessage = raceResult.error instanceof Error ? raceResult.error.message : String(raceResult.error);
+    const record: OperationRecord<TReceipt> = {
+      operationId,
       idempotencyKey: input.operation.idempotencyKey,
       capabilityId: capability.id,
       payloadHash,
@@ -171,6 +203,109 @@ export async function executeAction<TParams, TReceipt>(
       errorMessage,
     };
     input.operationStore.record(record);
-    return { ok: false, stage: "adapter", errorMessage };
+    return { ok: false, stage: "adapter", errorMessage, auditEvents };
   }
+
+  const gatewayResult = raceResult.value;
+  if (!gatewayResult.ok) {
+    // The gateway's own capability re-check failed. Should be unreachable
+    // here since this function already validated the same capability
+    // against the same request — kept as a defence-in-depth backstop,
+    // not a path this function's own logic is expected to take.
+    const record: OperationRecord<TReceipt> = {
+      operationId,
+      idempotencyKey: input.operation.idempotencyKey,
+      capabilityId: capability.id,
+      payloadHash,
+      state: "failed",
+      errorMessage: `gateway rejected: ${gatewayResult.reasonCode}`,
+    };
+    input.operationStore.record(record);
+    return { ok: false, stage: "capability", reasonCode: gatewayResult.reasonCode, auditEvents };
+  }
+
+  return finalizeFromReceipt(input, gatewayResult.receipt, payloadHash, capability.id, false, auditEvents, audit);
+}
+
+/**
+ * A duplicate idempotency-key presentation. `SUCCEEDED`/`FAILED` are
+ * definite, deterministic outcomes already — replayed as-is, no new
+ * adapter interaction of any kind. `UNKNOWN_OUTCOME` is the one case that
+ * does something: it reconciles via `adapter.lookup`, which is READ-ONLY
+ * and cannot itself cause a side effect — `adapter.execute` is never
+ * called from this function. This is the literal implementation of "same
+ * idempotency identity -> MUST NOT blindly invoke adapter again."
+ */
+async function reconcileDuplicate<TParams, TReceipt>(
+  input: ExecuteActionInput<TParams, TReceipt>,
+  prior: OperationRecord<TReceipt>,
+  audit: (type: Parameters<typeof buildVerificationAuditEvent>[0], payload: Record<string, unknown>) => VerificationAuditEvent,
+): Promise<ExecuteActionResult<TReceipt>> {
+  if (prior.state === "succeeded" && prior.receipt !== undefined) {
+    return { ok: true, receipt: prior.receipt, replay: true, operationId: prior.operationId, auditEvents: [] };
+  }
+  if (prior.state === "failed") {
+    return { ok: false, stage: "adapter", errorMessage: prior.errorMessage ?? "prior attempt did not succeed", auditEvents: [] };
+  }
+
+  // prior.state === "unknown_outcome": reconcile via lookup, never execute.
+  const lookupResult = await input.adapter.lookup(prior.operationId);
+
+  if (lookupResult.status === "unknown") {
+    const auditEvents = [audit("RECONCILIATION_REQUIRED", { reasonCode: "UNKNOWN_OUTCOME" })];
+    return { ok: false, stage: "reconciliation_required", operationId: prior.operationId, reasonCode: "UNKNOWN_OUTCOME", auditEvents };
+  }
+
+  return finalizeFromReceipt(input, lookupResult.receipt, prior.payloadHash, prior.capabilityId, true, [], audit);
+}
+
+/** Shared by the fresh-execution path and the reconciliation path: run the postcondition check, record the outcome, return the result. */
+function finalizeFromReceipt<TParams, TReceipt>(
+  input: ExecuteActionInput<TParams, TReceipt>,
+  receipt: TReceipt,
+  payloadHash: string,
+  capabilityId: string,
+  reconciled: boolean,
+  auditEventsSoFar: readonly VerificationAuditEvent[],
+  audit: (type: Parameters<typeof buildVerificationAuditEvent>[0], payload: Record<string, unknown>) => VerificationAuditEvent,
+): ExecuteActionResult<TReceipt> {
+  const operationId = input.operation.operationId;
+  const postconditionResult = verifyPostcondition(input.request.actionType, receipt, input.postcondition);
+  const auditEvents = [...auditEventsSoFar];
+
+  if (!postconditionResult.ok) {
+    const record: OperationRecord<TReceipt> = {
+      operationId,
+      idempotencyKey: input.operation.idempotencyKey,
+      capabilityId,
+      payloadHash,
+      state: "failed",
+      errorMessage: "adapter response did not satisfy the required postcondition",
+      postconditionReport: { verified: false, reasonCode: postconditionResult.reasonCode },
+    };
+    input.operationStore.record(record);
+    auditEvents.push(audit("POSTCONDITION_FAILED", { reasonCode: postconditionResult.reasonCode }));
+    return { ok: false, stage: "postcondition", reasonCode: postconditionResult.reasonCode, auditEvents };
+  }
+
+  const record: OperationRecord<TReceipt> = {
+    operationId,
+    idempotencyKey: input.operation.idempotencyKey,
+    capabilityId,
+    payloadHash,
+    state: "succeeded",
+    receipt,
+    postconditionReport: { verified: true },
+  };
+  input.operationStore.record(record);
+  auditEvents.push(audit("POSTCONDITION_VERIFIED", reconciled ? { reasonCode: "RECONCILED_SUCCESS" } : {}));
+
+  return {
+    ok: true,
+    receipt,
+    replay: reconciled,
+    operationId,
+    auditEvents,
+    ...(reconciled ? { reasonCode: "RECONCILED_SUCCESS" as const } : {}),
+  };
 }
