@@ -178,7 +178,12 @@ async function runIdempotencyCase(samePayload: boolean): Promise<CaseOutcome> {
   });
 
   if (second.ok) {
-    return { observedTerminalState: "VERIFIED", observedReasonCodes: [], adapterExecuteCalls: callCount(), note: `replay=${second.replay}; same-payload duplicate returns cached receipt, adapter not called again` };
+    return {
+      observedTerminalState: "VERIFIED",
+      observedReasonCodes: second.reasonCode !== undefined ? [second.reasonCode] : [],
+      adapterExecuteCalls: callCount(),
+      note: `replay=${second.replay}; same-payload duplicate returns cached receipt, adapter not called again`,
+    };
   }
   return { observedTerminalState: second.stage === "idempotency" ? "REJECTED" : `FAILED(${second.stage})`, observedReasonCodes: second.stage === "idempotency" ? [second.reasonCode] : [], adapterExecuteCalls: callCount(), note: "same idempotency key, different payload -> conflict before the adapter is ever called again" };
 }

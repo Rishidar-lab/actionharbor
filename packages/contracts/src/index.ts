@@ -566,9 +566,17 @@ export type CapabilityMintRejectionReason = z.infer<typeof CapabilityMintRejecti
  * synchronous pass, because the audit trail should show this was resolved
  * by reconciliation, not by the original call), `POSTCONDITION_UNVERIFIED`
  * (w3-020, an adapter response — malformed or merely not satisfying what
- * was required — that does not prove the claimed side effect).
+ * was required — that does not prove the claimed side effect), and
+ * `IDEMPOTENT_REPLAY` (w3-006, Gate 11: a duplicate idempotency-key
+ * presentation with the SAME payload as an already-`succeeded` operation —
+ * added when the Gate 10 evaluation harness caught it as a genuine gap:
+ * `executeAction` correctly returned the cached receipt with no second
+ * adapter call, but reported no reason code at all for this specific
+ * success path, and API_SPEC.md's own stable error-code list names this
+ * exact family of outcome `duplicate_operation` — this closes that gap
+ * rather than inventing new behavior).
  */
-export const VerificationReasonCode = z.enum(["UNKNOWN_OUTCOME", "RECONCILED_SUCCESS", "POSTCONDITION_UNVERIFIED"]);
+export const VerificationReasonCode = z.enum(["UNKNOWN_OUTCOME", "RECONCILED_SUCCESS", "POSTCONDITION_UNVERIFIED", "IDEMPOTENT_REPLAY"]);
 export type VerificationReasonCode = z.infer<typeof VerificationReasonCode>;
 
 /**
@@ -593,6 +601,7 @@ export const AuditEventType = z.enum([
   "EXECUTION_UNKNOWN",
   "RECONCILIATION_REQUIRED",
   "AUDIT_INTEGRITY_CHECKED",
+  "DUPLICATE_REPLAY_DETECTED",
 ]);
 export type AuditEventType = z.infer<typeof AuditEventType>;
 

@@ -3,8 +3,8 @@ import { runHarness } from "./harness.js";
 import { loadFourCorpora } from "./load-corpus.js";
 
 /**
- * The Gate 10 harness contract. `runHarness()` drives every one of the 24
- * `adversarial_cases.json` cases through the REAL packages/* pipeline
+ * The Gate 10/11 harness contract. `runHarness()` drives every one of the
+ * 24 `adversarial_cases.json` cases through the REAL packages/* pipeline
  * (`case-runner.ts`) and grades each against its own `expected` block
  * (`grade.ts`) — nothing here is a simulated or hand-typed result.
  *
@@ -14,14 +14,27 @@ import { loadFourCorpora } from "./load-corpus.js";
  *
  *  - SAFE (24/24, required, zero tolerance): no case ever produces an
  *    illegitimate adapter side effect — the actual security invariant.
- *  - primaryPass (23/24, exact known exception list, not "at least"): the
- *    corpus's own terminal_state + reason_codes strings match exactly.
- *    w3-006 is a genuine, disclosed vocabulary gap — our system has no
- *    reasonCode for "this was a successful idempotent replay" (only
- *    RECONCILED_SUCCESS, which is reconciliation-specific) — NOT a safety
- *    failure: w3-006 is still SAFE (adapter called exactly once, second
- *    submission returns the cached receipt). If this list ever changes,
- *    this test must be updated deliberately, not silently.
+ *  - primaryPass (24/24): the corpus's own terminal_state + reason_codes
+ *    strings match exactly.
+ *
+ * w3-006 HISTORY (Gate 11): Gate 10 originally shipped at 23/24 — our
+ * system had no reasonCode for "a duplicate idempotency-key presentation
+ * with the SAME payload as an already-succeeded operation" (only
+ * RECONCILED_SUCCESS, which is reconciliation-specific). Investigated per
+ * Gate 11's explicit instruction before touching anything: TECHNICAL_SPEC,
+ * API_SPEC (whose own stable error-code list names this exact family of
+ * outcome `duplicate_operation`), ERROR_MODEL, and DOMAIN_MODEL — NONE of
+ * the frozen prose spec documents contain the string "IDEMPOTENT_REPLAY";
+ * it exists only in the evaluation corpus. Conclusion: the corpus was
+ * right and the implementation was incomplete, not the other way around —
+ * `executeAction` already returned the cached receipt with zero second
+ * adapter calls (the safety property always held), it simply never
+ * labelled that specific success path. Fixed by adding
+ * `VerificationReasonCode.IDEMPOTENT_REPLAY` and an `AuditEventType.
+ * DUPLICATE_REPLAY_DETECTED` event to both the plain-duplicate-success
+ * path and the idempotency-conflict path (`packages/gateway/execution.ts`)
+ * — the corpus's own expected string, reached via a genuine code fix, not
+ * a rewritten expectation.
  */
 describe("Gate 10 harness — all 24 adversarial_cases.json cases", () => {
   it("loads all four corpora as consistent subsets of the 24-case union", () => {
@@ -46,17 +59,22 @@ describe("Gate 10 harness — all 24 adversarial_cases.json cases", () => {
     expect(summary.safeCount).toBe(24);
   });
 
-  it("PRIMARY MATCH: exactly w3-006 is the known, disclosed reason-code vocabulary gap — every other case matches the corpus's terminal_state and reason_codes exactly", async () => {
+  it("PRIMARY MATCH: all 24 cases match the corpus's terminal_state and reason_codes exactly", async () => {
     const summary = await runHarness();
     const failing = summary.grades.filter((g) => !g.primaryPass).map((g) => g.caseId);
-    expect(failing).toEqual(["w3-006"]);
-    expect(summary.primaryPassCount).toBe(23);
+    expect(failing).toEqual([]);
+    expect(summary.primaryPassCount).toBe(24);
+  });
 
+  it("w3-006 (idempotent replay): resolved via a real reasonCode, not a rewritten expectation — cached receipt, adapter called exactly once", async () => {
+    const summary = await runHarness();
     const w3006 = summary.grades.find((g) => g.caseId === "w3-006");
     expect(w3006).toBeDefined();
-    expect(w3006?.terminalStateMatch).toBe(true); // VERIFIED matches
-    expect(w3006?.reasonCodesMatch).toBe(false); // our system has no "IDEMPOTENT_REPLAY" reasonCode
-    expect(w3006?.safe).toBe(true); // still fully safe: adapter called exactly once
+    expect(w3006?.terminalStateMatch).toBe(true);
+    expect(w3006?.reasonCodesMatch).toBe(true);
+    expect(w3006?.observedReasonCodes).toEqual(["IDEMPOTENT_REPLAY"]);
+    expect(w3006?.adapterExecuteCalls).toBe(1);
+    expect(w3006?.safe).toBe(true);
   });
 
   it("w3-018 (retry budget exhausted) is resolved, not NOT_APPLICABLE", async () => {

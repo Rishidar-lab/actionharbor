@@ -53,8 +53,16 @@ export type ExecuteActionSuccess<TReceipt> = {
   readonly replay: boolean;
   readonly operationId: string;
   readonly auditEvents: readonly AuditLedgerEntry[];
-  /** Present, and always `"RECONCILED_SUCCESS"`, only when this success was resolved via a reconciliation lookup rather than the original synchronous call (w3-013). */
-  readonly reasonCode?: "RECONCILED_SUCCESS";
+  /**
+   * `"RECONCILED_SUCCESS"` when this success was resolved via a
+   * reconciliation lookup rather than the original synchronous call
+   * (w3-013). `"IDEMPOTENT_REPLAY"` when this is a duplicate idempotency-key
+   * presentation with the same payload as an already-`succeeded` operation
+   * (w3-006) — the cached receipt is returned, `adapter.execute` is never
+   * called a second time. Absent only for a genuinely fresh, first-time
+   * success.
+   */
+  readonly reasonCode?: "RECONCILED_SUCCESS" | "IDEMPOTENT_REPLAY";
 };
 
 export type ExecuteActionResult<TReceipt> = ExecuteActionSuccess<TReceipt> | ExecuteActionFailure;
@@ -156,7 +164,8 @@ export async function executeAction<TParams, TReceipt>(
   const idempotencyLookup = input.operationStore.check(input.operation.idempotencyKey, payloadHash);
 
   if (idempotencyLookup.status === "conflict") {
-    return { ok: false, stage: "idempotency", reasonCode: "IDEMPOTENCY_KEY_PAYLOAD_MISMATCH", auditEvents: [] };
+    const auditEvents = [audit("DUPLICATE_REPLAY_DETECTED", { reasonCode: "IDEMPOTENCY_KEY_PAYLOAD_MISMATCH" })];
+    return { ok: false, stage: "idempotency", reasonCode: "IDEMPOTENCY_KEY_PAYLOAD_MISMATCH", auditEvents };
   }
 
   if (idempotencyLookup.status === "duplicate") {
@@ -248,7 +257,8 @@ async function reconcileDuplicate<TParams, TReceipt>(
   audit: (type: AuditEventType, payload: Record<string, unknown>) => AuditLedgerEntry,
 ): Promise<ExecuteActionResult<TReceipt>> {
   if (prior.state === "succeeded" && prior.receipt !== undefined) {
-    return { ok: true, receipt: prior.receipt, replay: true, operationId: prior.operationId, auditEvents: [] };
+    const auditEvents = [audit("DUPLICATE_REPLAY_DETECTED", { reasonCode: "IDEMPOTENT_REPLAY" })];
+    return { ok: true, receipt: prior.receipt, replay: true, operationId: prior.operationId, auditEvents, reasonCode: "IDEMPOTENT_REPLAY" };
   }
   if (prior.state === "failed") {
     return { ok: false, stage: "adapter", errorMessage: prior.errorMessage ?? "prior attempt did not succeed", auditEvents: [] };

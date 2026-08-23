@@ -33,6 +33,7 @@ function stageForEventType(type: AuditEventType): ProjectionStage | undefined {
       return "capability";
     case "EXECUTION_STARTED":
     case "PRECONDITION_FAILED":
+    case "DUPLICATE_REPLAY_DETECTED":
       return "execution";
     case "POSTCONDITION_VERIFIED":
     case "POSTCONDITION_FAILED":
@@ -71,6 +72,15 @@ function finalStateForEventType(type: AuditEventType, previous: OperationFinalSt
     case "RECONCILIATION_REQUIRED":
       return "RECONCILIATION_REQUIRED";
     case "AUDIT_INTEGRITY_CHECKED":
+      return previous;
+    case "DUPLICATE_REPLAY_DETECTED":
+      // Ambiguous by itself — this event alone can mean either "the cached
+      // result of an already-VERIFIED operation was returned" (w3-006) or
+      // "this attempt was rejected as a conflict" (w3-007). The real
+      // outcome for a SPECIFIC attempt is carried by that attempt's own
+      // preceding/following events; a coarse per-operation fold like this
+      // one is not the place to disambiguate it, so it leaves finalState
+      // unchanged rather than guessing.
       return previous;
     default: {
       const exhaustive: never = type;

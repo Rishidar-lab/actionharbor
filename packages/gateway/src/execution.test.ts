@@ -427,8 +427,12 @@ describe("executeAction — idempotency + UNKNOWN_OUTCOME reconciliation", () =>
     expect(first).toMatchObject({ ok: true, replay: false });
 
     const second = await executeAction(baseInput(h, request, { capabilityRaw: capability }));
-    expect(second).toMatchObject({ ok: true, receipt: validTicketReceipt(), replay: true, operationId: "op_1" });
+    expect(second).toMatchObject({ ok: true, receipt: validTicketReceipt(), replay: true, operationId: "op_1", reasonCode: "IDEMPOTENT_REPLAY" });
     expect(h.adapter.execute).toHaveBeenCalledTimes(1);
+    // Gate 11 (w3-006): the replay itself is a server-authored ledger entry, not a silent no-op.
+    if (!second.ok) throw new Error("unreachable");
+    expect(second.auditEvents.map((e) => e.type)).toEqual(["DUPLICATE_REPLAY_DETECTED"]);
+    expect(second.auditEvents[0]?.actor.kind).toBe("server");
   });
 
   it("the same idempotency key with a MATERIALLY DIFFERENT operation (different params) is rejected before the adapter is ever called", async () => {
@@ -447,6 +451,9 @@ describe("executeAction — idempotency + UNKNOWN_OUTCOME reconciliation", () =>
     expect(conflicting).toMatchObject({ ok: false, stage: "idempotency", reasonCode: "IDEMPOTENCY_KEY_PAYLOAD_MISMATCH" });
     expect(h.adapter.execute).toHaveBeenCalledTimes(1);
     expect(h.registry.consume(secondCapability.id, secondCapability.nonce)).toEqual({ ok: true }); // never spent
+    // Gate 11 (w3-007): rejected conflicts are recorded too, not silently dropped.
+    if (conflicting.ok) throw new Error("unreachable");
+    expect(conflicting.auditEvents.map((e) => e.type)).toEqual(["DUPLICATE_REPLAY_DETECTED"]);
   });
 
   it("a failed adapter execution is recorded, and the same (now-consumed) capability cannot be replayed to retry it — a fresh authorization cycle is required", async () => {
