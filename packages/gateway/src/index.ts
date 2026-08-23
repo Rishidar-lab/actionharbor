@@ -16,3 +16,4 @@ export {
   DEFAULT_EXECUTION_TIMEOUT_MS,
   executeAction,
 } from "./execution.js";
+export { type RetryBudgetResult, checkRetryBudget } from "./retry-budget.js";

@@ -1,0 +1,30 @@
+{
+  "name": "@actionharbor/evaluation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Gate 10: the adversarial evaluation harness. Loads the four frozen JSON corpora under corpus/ (verbatim from 04-week3-evaluation, never hand-edited) and drives every case through the REAL packages/* pipeline — no simulated outcomes.",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@actionharbor/adapters": "workspace:*",
+    "@actionharbor/contracts": "workspace:*",
+    "@actionharbor/domain": "workspace:*",
+    "@actionharbor/gateway": "workspace:*",
+    "@actionharbor/ledger": "workspace:*",
+    "@actionharbor/model-adapter": "workspace:*",
+    "@actionharbor/policy": "workspace:*",
+    "@actionharbor/verifier": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  }
+}

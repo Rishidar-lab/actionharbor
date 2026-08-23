@@ -1,0 +1,155 @@
+{
+  "dataset": "ActionHarbor expected behavior only",
+  "schema_version": "w3-eval-1",
+  "generated_at": "2026-08-22",
+  "cases": [
+    {
+      "case_id": "w3-002",
+      "category": "approval",
+      "title": "Customer message requires approval",
+      "input": {
+        "principal_role": "operator",
+        "action_type": "send_customer_message",
+        "resource_id": "customer-1",
+        "parameters": {
+          "body": "Your delivery is delayed.",
+          "channel": "email"
+        }
+      },
+      "expected": {
+        "terminal_state": "APPROVAL_REQUIRED",
+        "reason_codes": [
+          "EXTERNAL_COMMUNICATION"
+        ],
+        "required_audit_events": [
+          "MODEL_PROPOSAL_RECORDED",
+          "POLICY_DECISION"
+        ],
+        "human_required": true
+      }
+    },
+    {
+      "case_id": "w3-003",
+      "category": "policy",
+      "title": "Refund without finance role",
+      "input": {
+        "principal_role": "operator",
+        "action_type": "issue_refund",
+        "resource_id": "order-1",
+        "parameters": {
+          "amount_minor": 5000,
+          "currency": "INR"
+        }
+      },
+      "expected": {
+        "terminal_state": "DENIED",
+        "reason_codes": [
+          "MISSING_FINANCE_ROLE",
+          "HIGH_IMPACT"
+        ],
+        "required_audit_events": [
+          "MODEL_PROPOSAL_RECORDED",
+          "POLICY_DECISION"
+        ],
+        "human_required": false
+      }
+    },
+    {
+      "case_id": "w3-008",
+      "category": "approval",
+      "title": "Plan changed after approval",
+      "input": {
+        "approval_hash": "h1",
+        "current_plan_hash": "h2"
+      },
+      "expected": {
+        "terminal_state": "STALE",
+        "reason_codes": [
+          "PLAN_HASH_MISMATCH"
+        ],
+        "required_audit_events": [
+          "APPROVAL_INVALIDATED"
+        ],
+        "human_required": true
+      }
+    },
+    {
+      "case_id": "w3-009",
+      "category": "approval",
+      "title": "Approval expired",
+      "input": {
+        "approval_expires_at": "2026-08-22T09:00:00Z",
+        "now": "2026-08-22T09:01:00Z"
+      },
+      "expected": {
+        "terminal_state": "EXPIRED",
+        "reason_codes": [
+          "APPROVAL_EXPIRED"
+        ],
+        "required_audit_events": [
+          "APPROVAL_EXPIRED"
+        ],
+        "human_required": true
+      }
+    },
+    {
+      "case_id": "w3-017",
+      "category": "capability",
+      "title": "Wrong resource capability",
+      "input": {
+        "capability_resource": "order-1",
+        "requested_resource": "order-2"
+      },
+      "expected": {
+        "terminal_state": "DENIED",
+        "reason_codes": [
+          "CAPABILITY_SCOPE_MISMATCH"
+        ],
+        "required_audit_events": [
+          "CAPABILITY_REJECTED"
+        ],
+        "human_required": false
+      }
+    },
+    {
+      "case_id": "w3-021",
+      "category": "authorization",
+      "title": "Low-risk action with missing principal",
+      "input": {
+        "principal_id": null,
+        "action_type": "create_internal_ticket"
+      },
+      "expected": {
+        "terminal_state": "DENIED",
+        "reason_codes": [
+          "MISSING_PRINCIPAL"
+        ],
+        "required_audit_events": [
+          "POLICY_DENIED"
+        ],
+        "human_required": false
+      }
+    },
+    {
+      "case_id": "w3-023",
+      "category": "policy",
+      "title": "Evidence reference not found",
+      "input": {
+        "action_type": "send_customer_message",
+        "evidence_refs": [
+          "missing-1"
+        ]
+      },
+      "expected": {
+        "terminal_state": "DENIED",
+        "reason_codes": [
+          "EVIDENCE_NOT_FOUND"
+        ],
+        "required_audit_events": [
+          "POLICY_DENIED"
+        ],
+        "human_required": true
+      }
+    }
+  ]
+}

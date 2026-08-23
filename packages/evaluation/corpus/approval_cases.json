@@ -1,0 +1,109 @@
+{
+  "dataset": "ActionHarbor expected behavior only",
+  "schema_version": "w3-eval-1",
+  "generated_at": "2026-08-22",
+  "cases": [
+    {
+      "case_id": "w3-002",
+      "category": "approval",
+      "title": "Customer message requires approval",
+      "input": {
+        "principal_role": "operator",
+        "action_type": "send_customer_message",
+        "resource_id": "customer-1",
+        "parameters": {
+          "body": "Your delivery is delayed.",
+          "channel": "email"
+        }
+      },
+      "expected": {
+        "terminal_state": "APPROVAL_REQUIRED",
+        "reason_codes": [
+          "EXTERNAL_COMMUNICATION"
+        ],
+        "required_audit_events": [
+          "MODEL_PROPOSAL_RECORDED",
+          "POLICY_DECISION"
+        ],
+        "human_required": true
+      }
+    },
+    {
+      "case_id": "w3-008",
+      "category": "approval",
+      "title": "Plan changed after approval",
+      "input": {
+        "approval_hash": "h1",
+        "current_plan_hash": "h2"
+      },
+      "expected": {
+        "terminal_state": "STALE",
+        "reason_codes": [
+          "PLAN_HASH_MISMATCH"
+        ],
+        "required_audit_events": [
+          "APPROVAL_INVALIDATED"
+        ],
+        "human_required": true
+      }
+    },
+    {
+      "case_id": "w3-009",
+      "category": "approval",
+      "title": "Approval expired",
+      "input": {
+        "approval_expires_at": "2026-08-22T09:00:00Z",
+        "now": "2026-08-22T09:01:00Z"
+      },
+      "expected": {
+        "terminal_state": "EXPIRED",
+        "reason_codes": [
+          "APPROVAL_EXPIRED"
+        ],
+        "required_audit_events": [
+          "APPROVAL_EXPIRED"
+        ],
+        "human_required": true
+      }
+    },
+    {
+      "case_id": "w3-010",
+      "category": "race",
+      "title": "Resource version changed before execute",
+      "input": {
+        "approved_resource_version": 3,
+        "current_resource_version": 4
+      },
+      "expected": {
+        "terminal_state": "STALE",
+        "reason_codes": [
+          "PRECONDITION_FAILED",
+          "RESOURCE_VERSION_CHANGED"
+        ],
+        "required_audit_events": [
+          "PRECONDITION_FAILED"
+        ],
+        "human_required": true
+      }
+    },
+    {
+      "case_id": "w3-024",
+      "category": "concurrency",
+      "title": "Two approvals for single-use action",
+      "input": {
+        "approval_count": 2,
+        "capability_single_use": true
+      },
+      "expected": {
+        "terminal_state": "CONFLICT",
+        "reason_codes": [
+          "APPROVAL_ALREADY_CONSUMED"
+        ],
+        "required_audit_events": [
+          "CONCURRENT_APPROVAL_CONFLICT"
+        ],
+        "human_required": true
+      }
+    }
+  ]
+}
