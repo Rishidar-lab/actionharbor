@@ -1,0 +1,32 @@
+{
+  "name": "@actionharbor/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The Gate 9 backend: an in-memory HTTP server that drives real proposal -> policy -> approval -> capability -> execution -> verification -> ledger runs through the actual packages/* logic — no mocked decisions, no hard-coded outcomes. Not a database-backed service (in-memory only, documented as a demo limitation); every security decision it renders is a real one.",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "start": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@actionharbor/adapters": "workspace:*",
+    "@actionharbor/contracts": "workspace:*",
+    "@actionharbor/domain": "workspace:*",
+    "@actionharbor/gateway": "workspace:*",
+    "@actionharbor/ledger": "workspace:*",
+    "@actionharbor/model-adapter": "workspace:*",
+    "@actionharbor/policy": "workspace:*",
+    "@actionharbor/verifier": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  }
+}

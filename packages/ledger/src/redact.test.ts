@@ -13,8 +13,11 @@ describe("redactValue — key-name detection", () => {
     ["credential", "raw-credential-value"],
     ["clientCredentials", "raw-credential-value"],
     ["authorization", "Basic dXNlcjpwYXNz"],
-    ["privateKey", "-----BEGIN PRIVATE KEY-----"],
-    ["accessKey", "AKIAABCDEFGHIJKLMNOP"],
+    // Deliberately NOT shaped like a real PEM header or AWS access key id —
+    // this test is about KEY-NAME detection, not value realism, and a
+    // realistic-looking fixture here would itself trip scripts/secret-scan.mjs.
+    ["privateKey", "FAKE-TEST-KEY-MATERIAL-NOT-REAL-PEM"],
+    ["accessKey", "FAKE-TEST-ACCESS-KEY-NOT-REAL-AKIA-STYLE"],
   ])("redacts value for secret-shaped key %s", (key, value) => {
     expect(redactValue(key, value)).toBe(REDACTED);
   });
