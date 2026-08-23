@@ -1,11 +1,15 @@
-import type { CapabilityRejectionReason, CapabilityRequest, PreconditionRejectionReason, VerificationAuditEvent } from "@actionharbor/contracts";
+import type { AuditEventType, AuditLedgerEntry, CapabilityRejectionReason, CapabilityRequest, PreconditionRejectionReason } from "@actionharbor/contracts";
 import type { Clock, IdGenerator } from "@actionharbor/domain";
 import { checkPreconditions, hashCanonical, parseAndValidateCapability } from "@actionharbor/domain";
-import { buildVerificationAuditEvent, verifyPostcondition, type PostconditionExpectation } from "@actionharbor/verifier";
+import type { AuditLedger } from "@actionharbor/ledger";
+import { verifyPostcondition, type PostconditionExpectation } from "@actionharbor/verifier";
 import type { AdapterOperation, AdapterPort } from "./adapter-port.js";
 import type { CapabilityRegistry } from "./capability-registry.js";
 import { invokeAdapter } from "./gateway.js";
 import type { OperationRecord, OperationStore } from "./operation-store.js";
+
+/** Every audit event this gateway emits is attributed to this fixed server identity — never to the model, never to a caller-supplied value. */
+const EXECUTION_GATEWAY_ACTOR = { kind: "server", id: "execution-gateway-v1" } as const;
 
 /** TECHNICAL_SPEC.md operational limit: "per-run execution budget 30 seconds; every timeout becomes UNKNOWN_OUTCOME pending lookup." */
 export const DEFAULT_EXECUTION_TIMEOUT_MS = 30_000;
@@ -21,6 +25,8 @@ export interface ExecuteActionInput<TParams, TReceipt> {
   readonly params: TParams;
   readonly clock: Clock;
   readonly idGenerator: IdGenerator;
+  /** The append-only, hash-chained audit store (Gate 8). Every event this function emits is appended here, never merely returned. */
+  readonly ledger: AuditLedger;
   readonly precondition: {
     readonly currentProposalHash: string;
     readonly currentResourceVersion: number;
@@ -32,21 +38,21 @@ export interface ExecuteActionInput<TParams, TReceipt> {
 }
 
 export type ExecuteActionFailure =
-  | { readonly ok: false; readonly stage: "capability"; readonly reasonCode: CapabilityRejectionReason; readonly auditEvents: readonly VerificationAuditEvent[] }
-  | { readonly ok: false; readonly stage: "precondition"; readonly reasonCodes: readonly PreconditionRejectionReason[]; readonly auditEvents: readonly VerificationAuditEvent[] }
-  | { readonly ok: false; readonly stage: "idempotency"; readonly reasonCode: "IDEMPOTENCY_KEY_PAYLOAD_MISMATCH"; readonly auditEvents: readonly VerificationAuditEvent[] }
-  | { readonly ok: false; readonly stage: "postcondition"; readonly reasonCode: "POSTCONDITION_UNVERIFIED"; readonly auditEvents: readonly VerificationAuditEvent[] }
-  | { readonly ok: false; readonly stage: "unknown_outcome"; readonly operationId: string; readonly reasonCode: "UNKNOWN_OUTCOME"; readonly auditEvents: readonly VerificationAuditEvent[] }
+  | { readonly ok: false; readonly stage: "capability"; readonly reasonCode: CapabilityRejectionReason; readonly auditEvents: readonly AuditLedgerEntry[] }
+  | { readonly ok: false; readonly stage: "precondition"; readonly reasonCodes: readonly PreconditionRejectionReason[]; readonly auditEvents: readonly AuditLedgerEntry[] }
+  | { readonly ok: false; readonly stage: "idempotency"; readonly reasonCode: "IDEMPOTENCY_KEY_PAYLOAD_MISMATCH"; readonly auditEvents: readonly AuditLedgerEntry[] }
+  | { readonly ok: false; readonly stage: "postcondition"; readonly reasonCode: "POSTCONDITION_UNVERIFIED"; readonly auditEvents: readonly AuditLedgerEntry[] }
+  | { readonly ok: false; readonly stage: "unknown_outcome"; readonly operationId: string; readonly reasonCode: "UNKNOWN_OUTCOME"; readonly auditEvents: readonly AuditLedgerEntry[] }
   /** STATE_MACHINE.md `UNKNOWN_OUTCOME -> RECONCILIATION_REQUIRED: lookup_inconclusive` — distinct from the initial `unknown_outcome` stage: this means a reconciliation lookup was actually attempted and still could not resolve it (w3-012), not merely "we haven't looked yet." */
-  | { readonly ok: false; readonly stage: "reconciliation_required"; readonly operationId: string; readonly reasonCode: "UNKNOWN_OUTCOME"; readonly auditEvents: readonly VerificationAuditEvent[] }
-  | { readonly ok: false; readonly stage: "adapter"; readonly errorMessage: string; readonly auditEvents: readonly VerificationAuditEvent[] };
+  | { readonly ok: false; readonly stage: "reconciliation_required"; readonly operationId: string; readonly reasonCode: "UNKNOWN_OUTCOME"; readonly auditEvents: readonly AuditLedgerEntry[] }
+  | { readonly ok: false; readonly stage: "adapter"; readonly errorMessage: string; readonly auditEvents: readonly AuditLedgerEntry[] };
 
 export type ExecuteActionSuccess<TReceipt> = {
   readonly ok: true;
   readonly receipt: TReceipt;
   readonly replay: boolean;
   readonly operationId: string;
-  readonly auditEvents: readonly VerificationAuditEvent[];
+  readonly auditEvents: readonly AuditLedgerEntry[];
   /** Present, and always `"RECONCILED_SUCCESS"`, only when this success was resolved via a reconciliation lookup rather than the original synchronous call (w3-013). */
   readonly reasonCode?: "RECONCILED_SUCCESS";
 };
@@ -126,8 +132,8 @@ export async function executeAction<TParams, TReceipt>(
 ): Promise<ExecuteActionResult<TReceipt>> {
   const now = input.clock.now();
   const operationId = input.operation.operationId;
-  const audit = (type: Parameters<typeof buildVerificationAuditEvent>[0], payload: Record<string, unknown>): VerificationAuditEvent =>
-    buildVerificationAuditEvent(type, operationId, payload, input.idGenerator, input.clock);
+  const audit = (type: AuditEventType, payload: Record<string, unknown>): AuditLedgerEntry =>
+    input.ledger.append({ type, actor: EXECUTION_GATEWAY_ACTOR, subject: { kind: "operation", id: operationId }, payload, operationId });
 
   const capabilityCheck = parseAndValidateCapability(input.capabilityRaw, input.request, now);
   if (!capabilityCheck.ok) {
@@ -164,7 +170,7 @@ export async function executeAction<TParams, TReceipt>(
     return { ok: false, stage: "capability", reasonCode: consumeResult.reasonCode, auditEvents: [] };
   }
 
-  const auditEvents: VerificationAuditEvent[] = [audit("EXECUTION_STARTED", { actionType: input.request.actionType })];
+  const auditEvents: AuditLedgerEntry[] = [audit("EXECUTION_STARTED", { actionType: input.request.actionType })];
   const timeoutMs = input.timeoutMs ?? DEFAULT_EXECUTION_TIMEOUT_MS;
 
   const raceResult = await raceWithTimeout(
@@ -239,7 +245,7 @@ export async function executeAction<TParams, TReceipt>(
 async function reconcileDuplicate<TParams, TReceipt>(
   input: ExecuteActionInput<TParams, TReceipt>,
   prior: OperationRecord<TReceipt>,
-  audit: (type: Parameters<typeof buildVerificationAuditEvent>[0], payload: Record<string, unknown>) => VerificationAuditEvent,
+  audit: (type: AuditEventType, payload: Record<string, unknown>) => AuditLedgerEntry,
 ): Promise<ExecuteActionResult<TReceipt>> {
   if (prior.state === "succeeded" && prior.receipt !== undefined) {
     return { ok: true, receipt: prior.receipt, replay: true, operationId: prior.operationId, auditEvents: [] };
@@ -266,8 +272,8 @@ function finalizeFromReceipt<TParams, TReceipt>(
   payloadHash: string,
   capabilityId: string,
   reconciled: boolean,
-  auditEventsSoFar: readonly VerificationAuditEvent[],
-  audit: (type: Parameters<typeof buildVerificationAuditEvent>[0], payload: Record<string, unknown>) => VerificationAuditEvent,
+  auditEventsSoFar: readonly AuditLedgerEntry[],
+  audit: (type: AuditEventType, payload: Record<string, unknown>) => AuditLedgerEntry,
 ): ExecuteActionResult<TReceipt> {
   const operationId = input.operation.operationId;
   const postconditionResult = verifyPostcondition(input.request.actionType, receipt, input.postcondition);

@@ -1,9 +1,9 @@
 {
-  "name": "@actionharbor/gateway",
+  "name": "@actionharbor/ledger",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "The action gateway: the only policy enforcement point allowed to call an adapter.",
+  "description": "The append-only, hash-chained audit ledger. Server-authored events only; no public update/delete API; integrity is verified by recomputing the chain, not trusted from storage.",
   "exports": {
     ".": {
       "types": "./src/index.ts",
@@ -15,10 +15,7 @@
   },
   "dependencies": {
     "@actionharbor/contracts": "workspace:*",
-    "@actionharbor/domain": "workspace:*",
-    "@actionharbor/ledger": "workspace:*",
-    "@actionharbor/policy": "workspace:*",
-    "@actionharbor/verifier": "workspace:*"
+    "@actionharbor/domain": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.9.3",

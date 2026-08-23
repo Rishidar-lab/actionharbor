@@ -1,5 +1,6 @@
 import type { Capability, CapabilityRequest, TicketReceipt } from "@actionharbor/contracts";
 import { CounterIdGenerator, FixedClock } from "@actionharbor/domain";
+import { AuditLedger } from "@actionharbor/ledger";
 import type { PostconditionExpectation } from "@actionharbor/verifier";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AdapterLookupResult, AdapterOperation } from "./adapter-port.js";
@@ -78,6 +79,7 @@ interface Harness {
   readonly registry: CapabilityRegistry;
   readonly operationStore: OperationStore<TicketReceipt>;
   readonly adapter: ReturnType<typeof createSpyAdapter<{ title: string }, TicketReceipt>>;
+  readonly ledger: AuditLedger;
 }
 
 function freshHarness(): Harness {
@@ -87,6 +89,7 @@ function freshHarness(): Harness {
     registry: new CapabilityRegistry(),
     operationStore: new OperationStore<TicketReceipt>(),
     adapter: createSpyAdapter<{ title: string }, TicketReceipt>("create_internal_ticket", validTicketReceipt()),
+    ledger: new AuditLedger(new CounterIdGenerator(), new FixedClock(NOW)),
   };
 }
 
@@ -119,6 +122,7 @@ function baseInput(
     params: PARAMS,
     clock: h.clock,
     idGenerator: h.idGenerator,
+    ledger: h.ledger,
     precondition: freshPreconditionFor(request),
     postcondition: ticketPostcondition(),
     ...overrides,

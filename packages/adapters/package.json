@@ -19,6 +19,7 @@
     "@actionharbor/gateway": "workspace:*"
   },
   "devDependencies": {
+    "@actionharbor/ledger": "workspace:*",
     "@actionharbor/model-adapter": "workspace:*",
     "@actionharbor/policy": "workspace:*",
     "typescript": "^5.9.3",

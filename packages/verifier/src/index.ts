@@ -6,4 +6,3 @@ export {
   verifyRefundPostcondition,
   verifyPostcondition,
 } from "./postcondition.js";
-export { buildVerificationAuditEvent } from "./audit-event.js";

@@ -1,6 +1,7 @@
 import type { Approval, CapabilityRequest } from "@actionharbor/contracts";
 import { computeProposalHash, consumeApproval, CounterIdGenerator, FixedClock } from "@actionharbor/domain";
 import { CapabilityRegistry, executeAction, mintCapability, OperationStore } from "@actionharbor/gateway";
+import { AuditLedger, verifyLedgerIntegrity } from "@actionharbor/ledger";
 import { FakeModelAdapter, parseModelProposal } from "@actionharbor/model-adapter";
 import { evaluatePolicy } from "@actionharbor/policy";
 import { describe, expect, it } from "vitest";
@@ -65,6 +66,7 @@ describe("full chain — ALLOW path: model intent becomes exactly one real ticke
     registry.record(mintResult.capability);
     const operationStore = new OperationStore<Awaited<ReturnType<FakeTicketAdapter["execute"]>>>();
     const adapter = new FakeTicketAdapter(idGenerator, clock);
+    const ledger = new AuditLedger(idGenerator, clock);
 
     const result = await executeAction({
       capabilityRaw: mintResult.capability,
@@ -76,6 +78,7 @@ describe("full chain — ALLOW path: model intent becomes exactly one real ticke
       params: action.parameters,
       clock,
       idGenerator,
+      ledger,
       precondition: { currentProposalHash: proposalHash, currentResourceVersion: 1, expectedResourceVersion: 1 },
       postcondition: { actionType: "create_internal_ticket", idempotencyKey: "key-1" },
     });
@@ -87,6 +90,13 @@ describe("full chain — ALLOW path: model intent becomes exactly one real ticke
     // Proof from the adapter's OWN state, not from executeAction's report of success.
     const lookedUp = await adapter.lookup("op_1");
     expect(lookedUp).toEqual({ status: "found", receipt: result.receipt });
+
+    // Proof from the LEDGER's own state (Gate 8), not from executeAction's returned array:
+    // real, sequenced, hash-chained, server-authored rows exist for this exact operation.
+    const ledgerEntries = ledger.findByOperation("op_1");
+    expect(ledgerEntries.map((e) => e.type)).toEqual(["EXECUTION_STARTED", "POSTCONDITION_VERIFIED"]);
+    expect(ledgerEntries.every((e) => e.actor.kind === "server")).toBe(true);
+    expect(verifyLedgerIntegrity(ledger.list())).toEqual({ ok: true, checkedEntries: 2 });
   });
 });
 
@@ -151,6 +161,7 @@ describe("full chain — REQUIRE_APPROVAL path: model intent becomes exactly one
     registry.record(mintResult.capability);
     const operationStore = new OperationStore<Awaited<ReturnType<FakeMessageAdapter["execute"]>>>();
     const adapter = new FakeMessageAdapter(idGenerator, clock);
+    const ledger = new AuditLedger(idGenerator, clock);
 
     const result = await executeAction({
       capabilityRaw: mintResult.capability,
@@ -162,6 +173,7 @@ describe("full chain — REQUIRE_APPROVAL path: model intent becomes exactly one
       params: action.parameters,
       clock,
       idGenerator,
+      ledger,
       precondition: { currentProposalHash: proposalHash, currentResourceVersion: 1, expectedResourceVersion: 1 },
       postcondition: {
         actionType: "send_customer_message",
@@ -176,6 +188,7 @@ describe("full chain — REQUIRE_APPROVAL path: model intent becomes exactly one
     if (!result.ok) throw new Error("unreachable");
     const lookedUp = await adapter.lookup("op_1");
     expect(lookedUp).toEqual({ status: "found", receipt: result.receipt });
+    expect(verifyLedgerIntegrity(ledger.list())).toEqual({ ok: true, checkedEntries: 2 });
   });
 });
 

@@ -572,23 +572,27 @@ export const VerificationReasonCode = z.enum(["UNKNOWN_OUTCOME", "RECONCILED_SUC
 export type VerificationReasonCode = z.infer<typeof VerificationReasonCode>;
 
 /**
- * The audit event types Gate 7 emits. A minimal, faithful SUBSET of
- * AUDIT_EVENT_SCHEMA.md's vocabulary — `sequence`, `prev_hash`, `hash`
- * (the hash chain itself), and `run_id`/`request_id` (which need a
- * persisted run/API layer that does not exist yet) are Gate 8/9's job.
- * What Gate 7 can and does guarantee now: every one of these events is
- * constructed exclusively from deterministic verification inputs, by
- * server code, never from model output — matching the exact vocabulary
- * `04-week3-evaluation/adversarial_cases.json` expects in
- * `required_audit_events` for w3-001, w3-010, w3-012, w3-013, and w3-020.
+ * The complete audit event vocabulary (AUDIT_EVENT_SCHEMA.md), matching
+ * exactly the `required_audit_events` strings used across
+ * `04-week3-evaluation/adversarial_cases.json` (e.g. w3-001's
+ * `MODEL_PROPOSAL_RECORDED, POLICY_DECISION, CAPABILITY_MINTED,
+ * EXECUTION_STARTED, POSTCONDITION_VERIFIED`). Every one of these is
+ * constructed exclusively from deterministic inputs, by server code, never
+ * from model output — see `AuditActorKind`/`AuditLedgerEntry` below and
+ * `packages/ledger`, which is the only place that appends them.
  */
 export const AuditEventType = z.enum([
+  "MODEL_PROPOSAL_RECORDED",
+  "POLICY_DECISION",
+  "APPROVAL_CONSUMED",
+  "CAPABILITY_MINTED",
   "EXECUTION_STARTED",
   "PRECONDITION_FAILED",
   "POSTCONDITION_VERIFIED",
   "POSTCONDITION_FAILED",
   "EXECUTION_UNKNOWN",
   "RECONCILIATION_REQUIRED",
+  "AUDIT_INTEGRITY_CHECKED",
 ]);
 export type AuditEventType = z.infer<typeof AuditEventType>;
 
@@ -610,20 +614,34 @@ export const AuditSubjectKind = z.enum(["action", "approval", "capability", "res
 export type AuditSubjectKind = z.infer<typeof AuditSubjectKind>;
 
 /**
- * A minimal, unchained audit event — the record Gate 8's ledger will wrap
- * with `sequence`/`prev_hash`/`hash` once an append-only store exists.
- * Already true of this shape: nothing about it can be model-authored (no
- * field takes untrusted input directly; every value is either a server
- * constant or derived from already-validated domain values).
+ * A row in the append-only, hash-chained audit ledger (Gate 8,
+ * AUDIT_EVENT_SCHEMA.md): the doc's example fields — `eventId`, `type`,
+ * `actor`, `subject`, `payload`, `occurredAt` — plus exactly the
+ * chain/correlation metadata it adds: `sequence`, `prevHash`, `hash` (the
+ * chain itself), `operationId`/`runId` (correlation identity — optional
+ * because not every event concerns a single in-flight operation, e.g.
+ * `POLICY_DECISION` predates one), and `policyVersion`/`requestId`
+ * (present only on events where they apply). Nothing about this shape can
+ * be model-authored: no field takes untrusted input directly, and only
+ * `packages/ledger`'s `AuditLedger.append` may construct one — there is
+ * deliberately no public constructor for this type outside that package,
+ * so "server-authored" is structural, not a convention.
  */
-export const VerificationAuditEvent = z
+export const AuditLedgerEntry = z
   .object({
     eventId: z.string().min(1),
+    sequence: z.number().int().positive(),
+    runId: z.string().min(1).optional(),
+    operationId: z.string().min(1).optional(),
     type: AuditEventType,
     actor: z.object({ kind: AuditActorKind, id: z.string().min(1) }).strict(),
     subject: z.object({ kind: AuditSubjectKind, id: z.string().min(1) }).strict(),
     payload: z.record(z.string(), z.unknown()),
+    policyVersion: z.string().min(1).optional(),
+    requestId: z.string().min(1).optional(),
     occurredAt: isoDatetime,
+    prevHash: z.string().min(1),
+    hash: z.string().min(1),
   })
   .strict();
-export type VerificationAuditEvent = z.infer<typeof VerificationAuditEvent>;
+export type AuditLedgerEntry = z.infer<typeof AuditLedgerEntry>;
