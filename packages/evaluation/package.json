@@ -21,7 +21,8 @@
     "@actionharbor/ledger": "workspace:*",
     "@actionharbor/model-adapter": "workspace:*",
     "@actionharbor/policy": "workspace:*",
-    "@actionharbor/verifier": "workspace:*"
+    "@actionharbor/verifier": "workspace:*",
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "typescript": "^5.9.3",
