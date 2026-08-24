@@ -126,6 +126,8 @@ This was not always the case, and the discrepancy is worth stating precisely rat
 
 ## 10. Demo Scenarios
 
+**Demo video:** https://github.com/Rishidar-lab/actionharbor/releases/tag/week3-demo-v1 (Scenario B, narrated, ~2 min)
+
 Five stable, reproducible flows, each driving real code (not canned responses) — see `apps/server/src/scenarios.ts`:
 
 | Scenario | What it proves |

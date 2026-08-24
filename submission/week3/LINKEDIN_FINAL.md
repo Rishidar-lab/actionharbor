@@ -2,8 +2,10 @@
 
 **Status: content final, grounded only in claims the frozen implementation
 actually supports** (`submission/week3/WEEK3_FREEZE.md`,
-`submission/week3/SUBMISSION_READINESS.md`). Two links are placeholders —
-fill only when real, do not guess them.
+`submission/week3/SUBMISSION_READINESS.md`). The demo video is now real
+and public (GitHub Release `week3-demo-v1`); the resulting LinkedIn post
+URL is the one remaining placeholder — it cannot exist until this is
+actually published.
 
 ---
 
@@ -55,7 +57,7 @@ safety, not model quality. That boundary is stated explicitly, not implied
 away.
 
 GitHub: https://github.com/Rishidar-lab/actionharbor
-Demo video: **[ADD DEMO VIDEO URL AFTER UPLOAD]**
+Demo video: https://github.com/Rishidar-lab/actionharbor/releases/tag/week3-demo-v1
 
 #InnovationHacks #AIEngineering #AgentSafety #TypeScript #Governance
 **[ADD OFFICIAL INNOVATION HACKS TAG/HANDLE/URL IF the program specifies one beyond the hashtag]**
@@ -64,10 +66,10 @@ Demo video: **[ADD DEMO VIDEO URL AFTER UPLOAD]**
 
 ## Publishing checklist (do not skip)
 
-- [x] **CI is passing** on `main` (commit `49a80fd`) — the prior `pnpm typecheck` failure (`Cannot find module 'zod'` in `packages/evaluation`, which imported zod directly without declaring it as a dependency) has been fixed by declaring `zod` as a direct dependency, and verified green in a live GitHub Actions run, not just locally.
-- [x] Local `main` and `origin/main` match exactly at `49a80fd` — nothing outstanding to push.
-- [ ] Record the demo per `DEMO_SCRIPT.md` / `FINAL_RECORDING_SHOTLIST.md` / `NARRATION.md` — all three are complete and marked "ready to record"; no recording exists yet.
-- [ ] Replace the demo-video placeholder with the real upload URL — never guess it.
+- [x] **CI is passing** on `main` — the prior `pnpm typecheck` failure (`Cannot find module 'zod'` in `packages/evaluation`, which imported zod directly without declaring it as a dependency) was fixed by declaring `zod` as a direct dependency, and verified green in live GitHub Actions runs, most recently at commit `21f03b1`.
+- [x] Local `main` and `origin/main` match — nothing outstanding to push at the time of writing.
+- [x] Recorded the demo per `DEMO_SCRIPT.md` / `FINAL_RECORDING_SHOTLIST.md` / `NARRATION.md` — real Playwright capture of the live app (Scenario B), local TTS narration, burned-in captions. Published as GitHub Release `week3-demo-v1`.
+- [x] Replaced the demo-video placeholder with the real, publicly-verified release URL above.
 - [ ] Do not claim live LLM integration, production readiness, or a tamper-*proof* (vs. tamper-*evident*) ledger — all explicitly disclaimed in the README and freeze doc.
-- [ ] Do not publish while any link above is still a placeholder.
+- [ ] Do not publish while any link above is still a placeholder. (Only the resulting LinkedIn post URL remains — it cannot exist before publication.)
 - [ ] Record the resulting post URL in `submission/FINAL_SUBMISSION_MATRIX.md` once published.
