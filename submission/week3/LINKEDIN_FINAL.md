@@ -53,7 +53,6 @@ GitHub: https://github.com/Rishidar-lab/actionharbor
 Demo video: https://github.com/Rishidar-lab/actionharbor/releases/tag/week3-demo-v1
 
 #InnovationHacks #AIEngineering #AgentSafety #Governance
-**[ADD OFFICIAL INNOVATION HACKS TAG/HANDLE/URL IF the program specifies one beyond the hashtag]**
 
 ---
 
