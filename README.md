@@ -214,7 +214,9 @@ ActionHarbor demonstrates that a policy-enforced gateway can prevent an untruste
 - Evaluate model *quality*. See §9 — every evaluation case runs against a deterministic fake model; there is no live-LLM integration to evaluate for proposal quality.
 - Survive a compromised server process. If the process itself is compromised, an attacker with code execution can do anything the server could do — capability-based security constrains what an *untrusted model* can cause, not what a fully compromised host can do.
 
-Full threat/control matrix in the frozen specification package's `THREAT_MODEL.md` (16 rows: direct/indirect injection, tool injection, schema bypass, replay, stale approval/TOCTOU, confused deputy, credential exposure, unsafe retries, audit tampering, malicious parameters, approval races, privilege escalation, partial failure, unbounded retry).
+Full threat/control matrix: [`submission/week4/THREAT_MODEL.md`](submission/week4/THREAT_MODEL.md) (20 rows, T1–T20: direct/indirect injection, tool injection, schema bypass, replay, stale approval/TOCTOU, confused deputy, credential exposure, unsafe retries, audit tampering, malicious parameters, approval races, privilege escalation, partial failure, unbounded retry, and more).
+
+> Note: the Week-3 frozen *prose* specification package cited elsewhere in this README (`TECHNICAL_SPEC.md`, `API_SPEC.md`, `ERROR_MODEL.md`, `DOMAIN_MODEL.md`) is a separate submission artifact and is **not committed to this repository**; the committed specs under `submission/week3/` and `submission/week4/` (including `THREAT_MODEL.md` above) are the in-repo frozen record.
 
 ## 15. Design Decisions
 
