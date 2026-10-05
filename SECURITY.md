@@ -10,7 +10,7 @@ If you find a security issue in the design or implementation (not in a third-par
 
 ## Threat model
 
-The full threat/control matrix (16 threats: prompt injection, tool injection, schema bypass, replay, stale approval/TOCTOU, confused deputy, credential exposure, unsafe retries, audit tampering, malicious parameters, approval races, privilege escalation, partial failure, unbounded retry, and more) lives in the frozen Week-3 specification's `THREAT_MODEL.md`. `README.md` §5 and §14 summarize the invariants actually proven by this codebase's tests and state plainly what is out of scope.
+The full threat/control matrix (20 threats, T1–T20: prompt injection, tool injection, schema bypass, replay, stale approval/TOCTOU, confused deputy, credential exposure, unsafe retries, audit tampering, malicious parameters, approval races, privilege escalation, partial failure, unbounded retry, and more) lives in [`submission/week4/THREAT_MODEL.md`](submission/week4/THREAT_MODEL.md). `README.md` §5 and §14 summarize the invariants actually proven by this codebase's tests and state plainly what is out of scope.
 
 ## Supply-chain / dependency-confusion assumption
 
