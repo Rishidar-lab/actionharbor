@@ -179,7 +179,7 @@ pnpm audit       # pnpm audit --prod
 pnpm secret-scan # zero-dependency scan of every git-tracked file
 ```
 
-Current verified counts: **379 tests** (374 from the root suite + 5 React-only tests that only run under the frontend's own jsdom config), **0 failures**, typecheck clean across all 11 packages, lint clean, production build clean, dependency audit clean, secret scan clean. CI (`.github/workflows/ci.yml`) runs the same commands on every push and PR to `main`.
+Current verified counts: **379 tests** (374 from the root suite + 5 React-only tests that only run under the frontend's own jsdom config), **0 failures**, typecheck clean across all 11 packages, lint clean, production build clean, **production-dependency audit clean** (`pnpm audit --prod` = 0 as of 2026-10-12; dev-only tooling advisories are reported non-blocking in CI and never ship), secret scan clean. CI (`.github/workflows/ci.yml`) runs the same commands on every push and PR to `main`.
 
 ## 13. Repository Structure
 
