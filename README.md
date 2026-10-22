@@ -1,5 +1,12 @@
 # ActionHarbor
 
+## Status
+
+**MAINTAIN — reference implementation (hackathon week-3 build).**
+
+- IMPLEMENTED / TESTED: policy-gated action pipeline, hash-chained ledger, redaction, 379 tests; CI green on `main` (production dependency audit gated, dev-only advisories reported non-blocking).
+- NOT CLAIMED: multi-tenant hardening, production deployment.
+
 A policy-enforced action gateway that only lets an AI proposal become a real side effect when authorization, human approval (where required), and independent postcondition verification all succeed.
 
 AI proposes. Policy decides. Human approval authorizes where required. Capabilities constrain execution. Deterministic verification proves outcomes. A tamper-evident audit ledger records the lifecycle.
